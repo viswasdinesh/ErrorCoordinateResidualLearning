@@ -1,0 +1,267 @@
+-- The C compiler identification is GNU 11.4.0
+-- The CXX compiler identification is GNU 11.4.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found ament_cmake: 1.3.14 (/opt/ros/humble/share/ament_cmake/cmake)
+-- Found Python3: /usr/bin/python3 (found version "3.10.12") found components: Interpreter 
+-- Override CMake install command with custom implementation using symlinks instead of copying resources
+-- Found rclcpp: 16.0.19 (/opt/ros/humble/share/rclcpp/cmake)
+-- Found rosidl_generator_c: 3.1.9 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+-- Found rosidl_adapter: 3.1.9 (/opt/ros/humble/share/rosidl_adapter/cmake)
+-- Found rosidl_generator_cpp: 3.1.9 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+-- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+-- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+-- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+-- Found rmw_cyclonedds_cpp: 1.3.4 (/opt/ros/humble/share/rmw_cyclonedds_cpp/cmake)
+-- Using RMW implementation 'rmw_cyclonedds_cpp' as default
+-- Looking for pthread.h
+-- Looking for pthread.h - found
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE  
+-- Found px4_msgs: 2.0.1 (/home/dinesh/ros2_ws/install/px4_msgs/share/px4_msgs/cmake)
+-- Found sensor_msgs: 4.9.1 (/opt/ros/humble/share/sensor_msgs/cmake)
+-- Found nav_msgs: 4.9.1 (/opt/ros/humble/share/nav_msgs/cmake)
+-- Found rosidl_default_generators: 1.2.1 (/opt/ros/humble/share/rosidl_default_generators/cmake)
+-- Found ament_cmake_ros: 0.10.0 (/opt/ros/humble/share/ament_cmake_ros/cmake)
+-- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+-- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+-- Found PythonInterp: /usr/bin/python3 (found suitable version "3.10.12", minimum required is "3.6") 
+-- Found python_cmake_module: 0.10.0 (/opt/ros/humble/share/python_cmake_module/cmake)
+-- Found PythonLibs: /usr/lib/x86_64-linux-gnu/libpython3.10.so (found suitable version "3.10.12", minimum required is "3.5") 
+-- Using PYTHON_EXECUTABLE: /usr/bin/python3
+-- Using PYTHON_INCLUDE_DIRS: /usr/include/python3.10
+-- Using PYTHON_LIBRARIES: /usr/lib/x86_64-linux-gnu/libpython3.10.so
+-- Found PythonExtra: .so  
+-- Found ament_lint_auto: 0.12.15 (/opt/ros/humble/share/ament_lint_auto/cmake)
+-- Added test 'cppcheck' to perform static code analysis on C / C++ code
+-- Configured cppcheck include dirs: /home/dinesh/ecrl_ws/src/ommpc_ros2/include
+-- Configured cppcheck exclude dirs and/or files: 
+-- Added test 'flake8' to check Python code syntax and style conventions
+-- Added test 'lint_cmake' to check CMake code style
+-- Added test 'pep257' to check Python code against some of the docstring style conventions in PEP 257
+-- Added test 'uncrustify' to check C / C++ code style
+-- Configured uncrustify additional arguments: 
+-- Added test 'xmllint' to check XML markup files
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/dinesh/ecrl_ws/src/build/ommpc_ros2
+[  2%] [34m[1mGenerating C code for ROS interfaces[0m
+[  4%] [34m[1mGenerating Rust code for ROS interfaces[0m
+[  6%] [34m[1mGenerating C++ code for ROS interfaces[0m
+[  6%] Built target ament_cmake_python_symlink_ommpc_ros2
+running egg_info
+creating ommpc_ros2.egg-info
+writing ommpc_ros2.egg-info/PKG-INFO
+writing dependency_links to ommpc_ros2.egg-info/dependency_links.txt
+writing top-level names to ommpc_ros2.egg-info/top_level.txt
+writing manifest file 'ommpc_ros2.egg-info/SOURCES.txt'
+reading manifest file 'ommpc_ros2.egg-info/SOURCES.txt'
+writing manifest file 'ommpc_ros2.egg-info/SOURCES.txt'
+[  6%] Built target ommpc_ros2__rs
+[  6%] Built target ament_cmake_python_build_ommpc_ros2_egg
+[  6%] Built target ommpc_ros2__cpp
+[  9%] [34m[1mGenerating C++ type support for eProsima Fast-RTPS[0m
+[ 11%] [34m[1mGenerating C++ introspection for ROS interfaces[0m
+[ 13%] [34m[1mGenerating C++ type support dispatch for ROS interfaces[0m
+[ 18%] [32mBuilding C object CMakeFiles/ommpc_ros2__rosidl_generator_c.dir/rosidl_generator_c/ommpc_ros2/msg/detail/poly_traj__functions.c.o[0m
+[ 18%] [32mBuilding C object CMakeFiles/ommpc_ros2__rosidl_generator_c.dir/rosidl_generator_c/ommpc_ros2/msg/detail/reference_state__functions.c.o[0m
+[ 20%] [32m[1mLinking C shared library libommpc_ros2__rosidl_generator_c.so[0m
+[ 20%] Built target ommpc_ros2__rosidl_generator_c
+[ 22%] [34m[1mGenerating C type support for eProsima Fast-RTPS[0m
+[ 27%] [34m[1mGenerating C type support dispatch for ROS interfaces[0m
+[ 27%] [34m[1mGenerating C introspection for ROS interfaces[0m
+[ 29%] [32mBuilding CXX object CMakeFiles/ommpc_ros2__rosidl_typesupport_introspection_cpp.dir/rosidl_typesupport_introspection_cpp/ommpc_ros2/msg/detail/reference_state__type_support.cpp.o[0m
+[ 31%] [32mBuilding CXX object CMakeFiles/ommpc_ros2__rosidl_typesupport_introspection_cpp.dir/rosidl_typesupport_introspection_cpp/ommpc_ros2/msg/detail/poly_traj__type_support.cpp.o[0m
+[ 34%] [32mBuilding CXX object CMakeFiles/ommpc_ros2__rosidl_typesupport_fastrtps_cpp.dir/rosidl_typesupport_fastrtps_cpp/ommpc_ros2/msg/detail/dds_fastrtps/reference_state__type_support.cpp.o[0m
+[ 40%] [32mBuilding CXX object CMakeFiles/ommpc_ros2__rosidl_typesupport_fastrtps_cpp.dir/rosidl_typesupport_fastrtps_cpp/ommpc_ros2/msg/detail/dds_fastrtps/poly_traj__type_support.cpp.o[0m
+[ 40%] [32mBuilding CXX object CMakeFiles/ommpc_ros2__rosidl_typesupport_cpp.dir/rosidl_typesupport_cpp/ommpc_ros2/msg/reference_state__type_support.cpp.o[0m
+[ 40%] [32mBuilding CXX object CMakeFiles/ommpc_ros2__rosidl_typesupport_cpp.dir/rosidl_typesupport_cpp/ommpc_ros2/msg/poly_traj__type_support.cpp.o[0m
+[ 45%] [32mBuilding CXX object CMakeFiles/ommpc_ros2__rosidl_typesupport_c.dir/rosidl_typesupport_c/ommpc_ros2/msg/reference_state__type_support.cpp.o[0m
+[ 45%] [32mBuilding CXX object CMakeFiles/ommpc_ros2__rosidl_typesupport_c.dir/rosidl_typesupport_c/ommpc_ros2/msg/poly_traj__type_support.cpp.o[0m
+[ 47%] [32m[1mLinking CXX shared library libommpc_ros2__rosidl_typesupport_c.so[0m
+[ 50%] [32mBuilding CXX object CMakeFiles/ommpc_ros2__rosidl_typesupport_fastrtps_c.dir/rosidl_typesupport_fastrtps_c/ommpc_ros2/msg/detail/reference_state__type_support_c.cpp.o[0m
+[ 52%] [32mBuilding CXX object CMakeFiles/ommpc_ros2__rosidl_typesupport_fastrtps_c.dir/rosidl_typesupport_fastrtps_c/ommpc_ros2/msg/detail/poly_traj__type_support_c.cpp.o[0m
+[ 52%] Built target ommpc_ros2__rosidl_typesupport_c
+[ 54%] [32mBuilding C object CMakeFiles/ommpc_ros2__rosidl_typesupport_introspection_c.dir/rosidl_typesupport_introspection_c/ommpc_ros2/msg/detail/poly_traj__type_support.c.o[0m
+[ 56%] [32mBuilding C object CMakeFiles/ommpc_ros2__rosidl_typesupport_introspection_c.dir/rosidl_typesupport_introspection_c/ommpc_ros2/msg/detail/reference_state__type_support.c.o[0m
+[ 59%] [32m[1mLinking CXX shared library libommpc_ros2__rosidl_typesupport_cpp.so[0m
+[ 61%] [32m[1mLinking C shared library libommpc_ros2__rosidl_typesupport_introspection_c.so[0m
+[ 61%] Built target ommpc_ros2__rosidl_typesupport_cpp
+[ 61%] Built target ommpc_ros2__rosidl_typesupport_introspection_c
+[ 63%] [32mBuilding CXX object CMakeFiles/ecrl_data_collector_node.dir/src/ecrl_data_collector_node.cpp.o[0m
+[ 65%] [32mBuilding CXX object CMakeFiles/ommpc_node.dir/src/ommpc_node.cpp.o[0m
+[ 68%] [32m[1mLinking CXX shared library libommpc_ros2__rosidl_typesupport_introspection_cpp.so[0m
+[ 68%] Built target ommpc_ros2__rosidl_typesupport_introspection_cpp
+[ 70%] [32m[1mLinking CXX shared library libommpc_ros2__rosidl_typesupport_fastrtps_c.so[0m
+[ 72%] [32m[1mLinking CXX shared library libommpc_ros2__rosidl_typesupport_fastrtps_cpp.so[0m
+[ 72%] Built target ommpc_ros2__rosidl_typesupport_fastrtps_c
+[ 72%] Built target ommpc_ros2__rosidl_typesupport_fastrtps_cpp
+[ 72%] Built target ommpc_ros2
+[ 75%] [34m[1mGenerating Python code for ROS interfaces[0m
+[ 75%] Built target ommpc_ros2__py
+[ 79%] [32mBuilding C object CMakeFiles/ommpc_ros2__rosidl_generator_py.dir/rosidl_generator_py/ommpc_ros2/msg/_reference_state_s.c.o[0m
+[ 79%] [32mBuilding C object CMakeFiles/ommpc_ros2__rosidl_generator_py.dir/rosidl_generator_py/ommpc_ros2/msg/_poly_traj_s.c.o[0m
+[ 81%] [32m[1mLinking C shared library rosidl_generator_py/ommpc_ros2/libommpc_ros2__rosidl_generator_py.so[0m
+[ 81%] Built target ommpc_ros2__rosidl_generator_py
+[ 88%] [32mBuilding C object CMakeFiles/ommpc_ros2__rosidl_typesupport_fastrtps_c__pyext.dir/rosidl_generator_py/ommpc_ros2/_ommpc_ros2_s.ep.rosidl_typesupport_fastrtps_c.c.o[0m
+[ 88%] [32mBuilding C object CMakeFiles/ommpc_ros2__rosidl_typesupport_introspection_c__pyext.dir/rosidl_generator_py/ommpc_ros2/_ommpc_ros2_s.ep.rosidl_typesupport_introspection_c.c.o[0m
+[ 88%] [32mBuilding C object CMakeFiles/ommpc_ros2__rosidl_typesupport_c__pyext.dir/rosidl_generator_py/ommpc_ros2/_ommpc_ros2_s.ep.rosidl_typesupport_c.c.o[0m
+[ 90%] [32m[1mLinking C shared library rosidl_generator_py/ommpc_ros2/ommpc_ros2_s__rosidl_typesupport_introspection_c.cpython-310-x86_64-linux-gnu.so[0m
+[ 93%] [32m[1mLinking C shared library rosidl_generator_py/ommpc_ros2/ommpc_ros2_s__rosidl_typesupport_c.cpython-310-x86_64-linux-gnu.so[0m
+[ 95%] [32m[1mLinking C shared library rosidl_generator_py/ommpc_ros2/ommpc_ros2_s__rosidl_typesupport_fastrtps_c.cpython-310-x86_64-linux-gnu.so[0m
+[ 95%] Built target ommpc_ros2__rosidl_typesupport_introspection_c__pyext
+[ 95%] Built target ommpc_ros2__rosidl_typesupport_c__pyext
+[ 95%] Built target ommpc_ros2__rosidl_typesupport_fastrtps_c__pyext
+In file included from /home/dinesh/ecrl_ws/src/ommpc_ros2/src/ommpc_node.cpp:11:
+/home/dinesh/ecrl_ws/src/ommpc_ros2/include/ommpc_ros2/ommpc_controller.hpp: In member function ‘void MpcController::setTrajectoryReference(const Trajectory&, double, double, const Trajectory&, const Odom_Data_t&)’:
+/home/dinesh/ecrl_ws/src/ommpc_ros2/include/ommpc_ros2/ommpc_controller.hpp:1178:29: warning: unused parameter ‘yaw_traj’ [-Wunused-parameter]
+ 1178 |           const Trajectory &yaw_traj,
+      |           ~~~~~~~~~~~~~~~~~~^~~~~~~~
+[ 97%] [32m[1mLinking CXX executable ecrl_data_collector_node[0m
+[ 97%] Built target ecrl_data_collector_node
+[100%] [32m[1mLinking CXX executable ommpc_node[0m
+[100%] Built target ommpc_node
+-- Install configuration: ""
+-- Execute custom install script
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ament_index/resource_index/rosidl_interfaces/ommpc_ros2
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/poly_traj__functions.h
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/poly_traj__struct.h
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/poly_traj__type_support.h
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/reference_state__functions.h
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/reference_state__struct.h
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/reference_state__type_support.h
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/poly_traj.h
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/reference_state.h
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/rosidl_generator_c__visibility_control.h
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/environment/library_path.sh
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/environment/library_path.dsv
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/poly_traj__rosidl_typesupport_fastrtps_c.h
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/reference_state__rosidl_typesupport_fastrtps_c.h
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/rosidl_typesupport_fastrtps_c__visibility_control.h
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/poly_traj__builder.hpp
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/poly_traj__struct.hpp
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/poly_traj__traits.hpp
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/poly_traj__type_support.hpp
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/reference_state__builder.hpp
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/reference_state__struct.hpp
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/reference_state__traits.hpp
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/reference_state__type_support.hpp
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/poly_traj.hpp
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/reference_state.hpp
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/rosidl_generator_cpp__visibility_control.hpp
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/poly_traj__rosidl_typesupport_fastrtps_cpp.hpp
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/reference_state__rosidl_typesupport_fastrtps_cpp.hpp
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/rosidl_typesupport_fastrtps_cpp__visibility_control.h
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/poly_traj__rosidl_typesupport_introspection_c.h
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/reference_state__rosidl_typesupport_introspection_c.h
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/rosidl_typesupport_introspection_c__visibility_control.h
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/poly_traj__rosidl_typesupport_introspection_cpp.hpp
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/include/ommpc_ros2/ommpc_ros2/msg/detail/reference_state__rosidl_typesupport_introspection_cpp.hpp
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/environment/pythonpath.sh
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/environment/pythonpath.dsv
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2-0.0.0-py3.10.egg-info/PKG-INFO
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2-0.0.0-py3.10.egg-info/SOURCES.txt
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2-0.0.0-py3.10.egg-info/dependency_links.txt
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2-0.0.0-py3.10.egg-info/top_level.txt
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/__init__.py
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/_ommpc_ros2_s.ep.rosidl_typesupport_c.c
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/_ommpc_ros2_s.ep.rosidl_typesupport_fastrtps_c.c
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/_ommpc_ros2_s.ep.rosidl_typesupport_introspection_c.c
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/libommpc_ros2__rosidl_generator_py.so
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/msg/__init__.py
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/msg/_poly_traj.py
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/msg/_poly_traj_s.c
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/msg/_reference_state.py
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/msg/_reference_state_s.c
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/ommpc_ros2_s__rosidl_typesupport_c.cpython-310-x86_64-linux-gnu.so
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/ommpc_ros2_s__rosidl_typesupport_fastrtps_c.cpython-310-x86_64-linux-gnu.so
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/ommpc_ros2_s__rosidl_typesupport_introspection_c.cpython-310-x86_64-linux-gnu.so
+-- Up-to-date symlink: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/ommpc_ros2_s__rosidl_typesupport_fastrtps_c.cpython-310-x86_64-linux-gnu.so
+-- Up-to-date symlink: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/ommpc_ros2_s__rosidl_typesupport_introspection_c.cpython-310-x86_64-linux-gnu.so
+-- Up-to-date symlink: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/ommpc_ros2_s__rosidl_typesupport_c.cpython-310-x86_64-linux-gnu.so
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ament_index/resource_index/rust_packages/ommpc_ros2
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/rust/Cargo.toml
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/rust/build.rs
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/rust/src/lib.rs
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/rust/src/msg.rs
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/rust/src/msg/rmw.rs
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/msg/PolyTraj.idl
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/msg/ReferenceState.idl
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/msg/PolyTraj.msg
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/msg/ReferenceState.msg
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/lib/ommpc_ros2/ommpc_node
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/lib/ommpc_ros2/ecrl_data_collector_node
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/lib/ommpc_ros2/trajectory_generator.py
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/config/params.yaml
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/launch/ommpc.launch.py
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ament_index/resource_index/package_run_dependencies/ommpc_ros2
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ament_index/resource_index/parent_prefix_path/ommpc_ros2
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/environment/ament_prefix_path.sh
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/environment/ament_prefix_path.dsv
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/environment/path.sh
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/environment/path.dsv
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/local_setup.bash
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/local_setup.sh
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/local_setup.zsh
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/local_setup.dsv
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/package.dsv
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ament_index/resource_index/packages/ommpc_ros2
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/rosidl_cmake-extras.cmake
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/ament_cmake_export_dependencies-extras.cmake
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/ament_cmake_export_include_directories-extras.cmake
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/ament_cmake_export_libraries-extras.cmake
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/ament_cmake_export_targets-extras.cmake
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/rosidl_cmake_export_typesupport_targets-extras.cmake
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/rosidl_cmake_export_typesupport_libraries-extras.cmake
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/rosidl_cmake_aggregate_target-extras.cmake
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/ommpc_ros2Config.cmake
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/ommpc_ros2Config-version.cmake
+-- Symlinking: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/package.xml
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/lib/libommpc_ros2__rosidl_generator_c.so
+-- Set runtime path of "/home/dinesh/ecrl_ws/src/install/ommpc_ros2/lib/libommpc_ros2__rosidl_generator_c.so" to ""
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/lib/libommpc_ros2__rosidl_typesupport_fastrtps_c.so
+-- Set runtime path of "/home/dinesh/ecrl_ws/src/install/ommpc_ros2/lib/libommpc_ros2__rosidl_typesupport_fastrtps_c.so" to ""
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/lib/libommpc_ros2__rosidl_typesupport_fastrtps_cpp.so
+-- Set runtime path of "/home/dinesh/ecrl_ws/src/install/ommpc_ros2/lib/libommpc_ros2__rosidl_typesupport_fastrtps_cpp.so" to ""
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/lib/libommpc_ros2__rosidl_typesupport_introspection_c.so
+-- Set runtime path of "/home/dinesh/ecrl_ws/src/install/ommpc_ros2/lib/libommpc_ros2__rosidl_typesupport_introspection_c.so" to ""
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/lib/libommpc_ros2__rosidl_typesupport_c.so
+-- Set runtime path of "/home/dinesh/ecrl_ws/src/install/ommpc_ros2/lib/libommpc_ros2__rosidl_typesupport_c.so" to ""
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/lib/libommpc_ros2__rosidl_typesupport_introspection_cpp.so
+-- Set runtime path of "/home/dinesh/ecrl_ws/src/install/ommpc_ros2/lib/libommpc_ros2__rosidl_typesupport_introspection_cpp.so" to ""
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/lib/libommpc_ros2__rosidl_typesupport_cpp.so
+-- Set runtime path of "/home/dinesh/ecrl_ws/src/install/ommpc_ros2/lib/libommpc_ros2__rosidl_typesupport_cpp.so" to ""
+Listing '/home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2'...
+Compiling '/home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/__init__.py'...
+Listing '/home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/msg'...
+Compiling '/home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/msg/__init__.py'...
+Compiling '/home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/msg/_poly_traj.py'...
+Compiling '/home/dinesh/ecrl_ws/src/install/ommpc_ros2/local/lib/python3.10/dist-packages/ommpc_ros2/msg/_reference_state.py'...
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/lib/libommpc_ros2__rosidl_generator_py.so
+-- Set runtime path of "/home/dinesh/ecrl_ws/src/install/ommpc_ros2/lib/libommpc_ros2__rosidl_generator_py.so" to ""
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/export_ommpc_ros2__rosidl_generator_cExport.cmake
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/export_ommpc_ros2__rosidl_generator_cExport-noconfig.cmake
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/export_ommpc_ros2__rosidl_typesupport_fastrtps_cExport.cmake
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/export_ommpc_ros2__rosidl_typesupport_fastrtps_cExport-noconfig.cmake
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/export_ommpc_ros2__rosidl_generator_cppExport.cmake
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/export_ommpc_ros2__rosidl_typesupport_fastrtps_cppExport.cmake
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/export_ommpc_ros2__rosidl_typesupport_fastrtps_cppExport-noconfig.cmake
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/ommpc_ros2__rosidl_typesupport_introspection_cExport.cmake
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/ommpc_ros2__rosidl_typesupport_introspection_cExport-noconfig.cmake
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/ommpc_ros2__rosidl_typesupport_cExport.cmake
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/ommpc_ros2__rosidl_typesupport_cExport-noconfig.cmake
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/ommpc_ros2__rosidl_typesupport_introspection_cppExport.cmake
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/ommpc_ros2__rosidl_typesupport_introspection_cppExport-noconfig.cmake
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/ommpc_ros2__rosidl_typesupport_cppExport.cmake
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/ommpc_ros2__rosidl_typesupport_cppExport-noconfig.cmake
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/export_ommpc_ros2__rosidl_generator_pyExport.cmake
+-- Installing: /home/dinesh/ecrl_ws/src/install/ommpc_ros2/share/ommpc_ros2/cmake/export_ommpc_ros2__rosidl_generator_pyExport-noconfig.cmake

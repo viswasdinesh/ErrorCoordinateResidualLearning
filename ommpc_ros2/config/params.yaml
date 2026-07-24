@@ -1,0 +1,30 @@
+ommpc_node:
+  ros__parameters:
+    takeoff_height: 1.5
+    takeoff_land_speed: 0.3
+    trajectory: "poly"  # "hover", "figure8", "circle", or "poly"
+    hover_percentage: 0.5
+    use_fix_yaw: false
+    use_trajectory_ending_pos: true
+
+    ref_txt:
+      enable: false
+      time_step: 0.01
+      ref_filename: ""
+
+    MPC_params:
+      Q_pos_xy: 2.0
+      Q_pos_z: 2.0
+      Q_velocity: 1.0
+      Q_attitude_rp: 1.0
+      Q_attitude_yaw: 10.0
+      R_thrust: 0.01
+      R_pitchroll: 0.01
+      R_yaw: 0.1
+      min_thrust: 0.1
+      max_thrust: 0.9
+      max_bodyrate_xy: 1.0
+      max_bodyrate_z: 0.5
+      state_cost_exponential: 0.0
+      input_cost_exponential: 0.0
+      step_T: 0.05

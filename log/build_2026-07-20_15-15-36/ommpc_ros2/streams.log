@@ -1,0 +1,48 @@
+[0.009s] Invoking command in '/home/dinesh/ecrl_ws/src/build/ommpc_ros2': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/dinesh/ros2_ws/install/px4_mpc:/home/dinesh/ros2_ws/install/px4_offboard:/home/dinesh/ros2_ws/install/dq_nmpc:/opt/ros/humble CONDA_PROMPT_MODIFIER=(base) /usr/bin/cmake /home/dinesh/ecrl_ws/src/ommpc_ros2 -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/dinesh/ecrl_ws/src/install/ommpc_ros2
+[0.045s] -- Found ament_cmake: 1.3.14 (/opt/ros/humble/share/ament_cmake/cmake)
+[0.163s] -- Override CMake install command with custom implementation using symlinks instead of copying resources
+[0.176s] -- Found rclcpp: 16.0.19 (/opt/ros/humble/share/rclcpp/cmake)
+[0.213s] -- Found rosidl_generator_c: 3.1.9 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+[0.215s] -- Found rosidl_adapter: 3.1.9 (/opt/ros/humble/share/rosidl_adapter/cmake)
+[0.221s] -- Found rosidl_generator_cpp: 3.1.9 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+[0.230s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[0.240s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[0.269s] -- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+[0.271s] -- Found rmw_cyclonedds_cpp: 1.3.4 (/opt/ros/humble/share/rmw_cyclonedds_cpp/cmake)
+[0.291s] -- Using RMW implementation 'rmw_cyclonedds_cpp' as default
+[0.336s] -- Found px4_msgs: 2.0.1 (/home/dinesh/ros2_ws/install/px4_msgs/share/px4_msgs/cmake)
+[0.347s] -- Found sensor_msgs: 4.9.1 (/opt/ros/humble/share/sensor_msgs/cmake)
+[0.369s] -- Found nav_msgs: 4.9.1 (/opt/ros/humble/share/nav_msgs/cmake)
+[0.381s] -- Found rosidl_default_generators: 1.2.1 (/opt/ros/humble/share/rosidl_default_generators/cmake)
+[0.636s] -- Found ament_cmake_ros: 0.10.0 (/opt/ros/humble/share/ament_cmake_ros/cmake)
+[0.989s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[1.127s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[1.149s] -- Found python_cmake_module: 0.10.0 (/opt/ros/humble/share/python_cmake_module/cmake)
+[1.174s] -- Using PYTHON_EXECUTABLE: /usr/bin/python3
+[1.174s] -- Using PYTHON_INCLUDE_DIRS: /usr/include/python3.10
+[1.174s] -- Using PYTHON_LIBRARIES: /usr/lib/x86_64-linux-gnu/libpython3.10.so
+[1.279s] -- Found ament_lint_auto: 0.12.15 (/opt/ros/humble/share/ament_lint_auto/cmake)
+[1.293s] -- Added test 'cppcheck' to perform static code analysis on C / C++ code
+[1.294s] -- Configured cppcheck include dirs: /home/dinesh/ecrl_ws/src/ommpc_ros2/include
+[1.294s] -- Configured cppcheck exclude dirs and/or files: 
+[1.294s] -- Added test 'flake8' to check Python code syntax and style conventions
+[1.295s] -- Added test 'lint_cmake' to check CMake code style
+[1.295s] -- Added test 'pep257' to check Python code against some of the docstring style conventions in PEP 257
+[1.296s] -- Added test 'uncrustify' to check C / C++ code style
+[1.296s] -- Configured uncrustify additional arguments: 
+[1.297s] -- Added test 'xmllint' to check XML markup files
+[1.300s] -- Configuring done
+[1.338s] -- Generating done
+[1.348s] -- Build files have been written to: /home/dinesh/ecrl_ws/src/build/ommpc_ros2
+[1.355s] Invoked command in '/home/dinesh/ecrl_ws/src/build/ommpc_ros2' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/dinesh/ros2_ws/install/px4_mpc:/home/dinesh/ros2_ws/install/px4_offboard:/home/dinesh/ros2_ws/install/dq_nmpc:/opt/ros/humble CONDA_PROMPT_MODIFIER=(base) /usr/bin/cmake /home/dinesh/ecrl_ws/src/ommpc_ros2 -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/dinesh/ecrl_ws/src/install/ommpc_ros2
+[1.357s] Invoking command in '/home/dinesh/ecrl_ws/src/build/ommpc_ros2': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/dinesh/ros2_ws/install/px4_mpc:/home/dinesh/ros2_ws/install/px4_offboard:/home/dinesh/ros2_ws/install/dq_nmpc:/opt/ros/humble CONDA_PROMPT_MODIFIER=(base) /usr/bin/cmake --build /home/dinesh/ecrl_ws/src/build/ommpc_ros2 -- -j20 -l20
+[1.400s] [35m[1mConsolidate compiler generated dependencies of target ommpc_ros2__rosidl_generator_c[0m
+[1.409s] failed to create symbolic link '/home/dinesh/ecrl_ws/src/build/ommpc_ros2/ament_cmake_python/ommpc_ros2/ommpc_ros2' because existing path cannot be removed: Is a directory
+[1.409s] [  2%] Built target ommpc_ros2__rs
+[1.409s] [  4%] Built target ommpc_ros2__cpp
+[1.410s] gmake[2]: *** [CMakeFiles/ament_cmake_python_symlink_ommpc_ros2.dir/build.make:70: CMakeFiles/ament_cmake_python_symlink_ommpc_ros2] Error 1
+[1.410s] gmake[1]: *** [CMakeFiles/Makefile2:444: CMakeFiles/ament_cmake_python_symlink_ommpc_ros2.dir/all] Error 2
+[1.410s] gmake[1]: *** Waiting for unfinished jobs....
+[1.415s] [ 13%] Built target ommpc_ros2__rosidl_generator_c
+[1.416s] gmake: *** [Makefile:146: all] Error 2
+[1.418s] Invoked command in '/home/dinesh/ecrl_ws/src/build/ommpc_ros2' returned '2': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/dinesh/ros2_ws/install/px4_mpc:/home/dinesh/ros2_ws/install/px4_offboard:/home/dinesh/ros2_ws/install/dq_nmpc:/opt/ros/humble CONDA_PROMPT_MODIFIER=(base) /usr/bin/cmake --build /home/dinesh/ecrl_ws/src/build/ommpc_ros2 -- -j20 -l20

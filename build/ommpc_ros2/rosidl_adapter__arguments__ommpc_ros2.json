@@ -1,0 +1,7 @@
+{
+  "package_name": "ommpc_ros2",
+  "non_idl_tuples": [
+    "/home/dinesh/ecrl_ws/src/ommpc_ros2:msg/PolyTraj.msg",
+    "/home/dinesh/ecrl_ws/src/ommpc_ros2:msg/ReferenceState.msg"
+  ]
+}

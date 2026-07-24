@@ -1,0 +1,27 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from ommpc_ros2/msg/PolyTraj.msg
+// generated code does not contain a copyright notice
+
+#include "builtin_interfaces/msg/Time.idl"
+
+module ommpc_ros2 {
+  module msg {
+    struct PolyTraj {
+      int16 drone_id;
+
+      int32 traj_id;
+
+      builtin_interfaces::msg::Time start_time;
+
+      uint8 order;
+
+      sequence<float> coef_x;
+
+      sequence<float> coef_y;
+
+      sequence<float> coef_z;
+
+      sequence<float> duration;
+    };
+  };
+};

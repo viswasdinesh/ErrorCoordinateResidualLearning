@@ -1,0 +1,6 @@
+builtin_interfaces/Time timestamp
+geometry_msgs/Point position
+geometry_msgs/Vector3 velocity
+geometry_msgs/Quaternion quaternion
+geometry_msgs/Vector3 body_rates
+float64 thrust

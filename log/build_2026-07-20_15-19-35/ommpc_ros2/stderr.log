@@ -1,0 +1,5 @@
+In file included from /home/dinesh/ecrl_ws/src/ommpc_ros2/src/ommpc_node.cpp:11:
+/home/dinesh/ecrl_ws/src/ommpc_ros2/include/ommpc_ros2/ommpc_controller.hpp: In member function ‘void MpcController::setTrajectoryReference(const Trajectory&, double, double, const Trajectory&, const Odom_Data_t&)’:
+/home/dinesh/ecrl_ws/src/ommpc_ros2/include/ommpc_ros2/ommpc_controller.hpp:1178:29: warning: unused parameter ‘yaw_traj’ [-Wunused-parameter]
+ 1178 |           const Trajectory &yaw_traj,
+      |           ~~~~~~~~~~~~~~~~~~^~~~~~~~
