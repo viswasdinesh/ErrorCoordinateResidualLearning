@@ -1,1 +1,0 @@
-ament_cmake_symlink_install_targets("TARGET_FILES" "/home/dinesh/ecrl_ws/src/build/ommpc_ros2/ommpc_node" "/home/dinesh/ecrl_ws/src/build/ommpc_ros2/ecrl_data_collector_node" "TARGETS" "ommpc_node" "ecrl_data_collector_node" "DESTINATION" "lib/ommpc_ros2")

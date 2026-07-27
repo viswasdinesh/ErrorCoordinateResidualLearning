@@ -101,6 +101,30 @@ if(BUILD_TESTING)
   set(ament_cmake_copyright_FOUND TRUE)
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
+
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_nominal_dynamics test/test_nominal_dynamics.cpp)
+  target_include_directories(test_nominal_dynamics PRIVATE
+    include
+    ${EIGEN3_INCLUDE_DIR}
+    /home/dinesh/acados/include
+  )
+  ament_target_dependencies(test_nominal_dynamics
+    rclcpp
+    px4_msgs
+    sensor_msgs
+    nav_msgs
+    geometry_msgs
+  )
+  target_link_libraries(test_nominal_dynamics osqp::osqp)
+  add_dependencies(test_nominal_dynamics ${cpp_typesupport_target})
+  target_link_libraries(test_nominal_dynamics ${cpp_typesupport_target})
+
+  # Pure-math fixture generator (Eigen only, no ROS/OSQP deps) consumed by
+  # scripts/test_residuals_parity.py to cross-check the Python port of
+  # nominal_dynamics.h against the C++ original.
+  add_executable(gen_nominal_dynamics_fixture test/gen_nominal_dynamics_fixture.cpp)
+  target_include_directories(gen_nominal_dynamics_fixture PRIVATE include ${EIGEN3_INCLUDE_DIR})
 endif()
 
 ament_package()

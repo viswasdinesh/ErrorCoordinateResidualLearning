@@ -12,6 +12,22 @@ Strategy to avoid overfitting to specific wind parameters:
      region of the dynamics is represented roughly equally.
   5. Strong regularization: weight decay, early stopping, gradient
      clipping, and moderate network capacity.
+
+Data format (see docs/residual_conventions.md and scripts/residuals.py):
+  Trains on the *ecrl* adapter's (X, Y) pair from residuals.py, computed from
+  raw schema_version=2 logs produced by ecrl_data_collector_node.cpp:
+    X: 16-D [controller error state dx (9) ; control error du (4) ;
+             Log(R_ref_k) r_ref (3)]  -- same layout as the pre-refactor
+       dataset, so the feature semantics below (dx_0..dx_5, du_0) still hold.
+    Y: 9-D residual against the exact nonlinear one-step model (not the old
+       linearized-model residual), with its attitude block (Y[:,6:9])
+       reparametrized into error coordinates relative to R_ref_k. A model
+       trained on this Y predicts in that SAME error frame -- transport its
+       output back to world frame with
+       residuals.py::transport_ecrl_prediction_to_world() before using it as
+       a world-frame correction (e.g. once wired into the MPC as an affine
+       QP offset). Do NOT point --calm_dir/--windy_dir at old
+       (schema_version=1) datasets; load_csv_files() below will reject them.
 """
 
 import os
@@ -28,6 +44,9 @@ from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils import spectral_norm, remove_spectral_norm
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import residuals as R  # noqa: E402
 
 
 # ─── Dataset ────────────────────────────────────────────────────────────
@@ -79,7 +98,12 @@ class NormalizedResidualMLP(nn.Module):
 
 # ─── Data Loading ───────────────────────────────────────────────────────
 def load_csv_files(dataset_dir, max_files=None, rng=None):
-    """Load polynomial CSVs from a single directory, optionally subsampling files."""
+    """Load raw schema_version=2 CSVs from a single directory (as produced by
+    ecrl_data_collector_node.cpp), optionally subsampling files, and turn each
+    into (X, y) via residuals.py's shared target + ecrl adapter. Every
+    per-row residual definition lives in residuals.py, not here -- this
+    function only does file discovery/subsampling and stacks the results.
+    """
     csv_pattern = os.path.join(dataset_dir, "polynomial*.csv")
     all_files = sorted(glob.glob(csv_pattern))
     # Exclude the giant polynomial300 aggregated file if present
@@ -96,38 +120,28 @@ def load_csv_files(dataset_dir, max_files=None, rng=None):
 
     print(f"  Loading {len(all_files)} files from {dataset_dir}")
 
-    dx_cols = [f"dx_{i}" for i in range(9)]
-    du_cols = [f"du_{i}" for i in range(4)]
-    res_cols = [f"res_{i}" for i in range(9)]
-    r_ref_cols = [f"r_ref_{i}" for i in range(3)]
-
     input_list, target_list, source_tags = [], [], []
 
     for f in tqdm(all_files, desc=f"  {os.path.basename(dataset_dir)}"):
-        df = pd.read_csv(f)
-
-        # Verify columns
-        required = dx_cols + du_cols + res_cols + r_ref_cols
-        missing = [c for c in required if c not in df.columns]
-        if missing:
-            print(f"  SKIP {f}: missing {missing}")
+        try:
+            df = R.load_raw_csv(f)
+        except ValueError as e:
+            print(f"  SKIP {f}: {e}")
             continue
 
-        # Clean
-        df = df[pd.to_numeric(df['timestamp'], errors='coerce').notna()]
-        df = df.apply(pd.to_numeric, errors='coerce').dropna()
         if len(df) < 10:
             continue
 
-        dx = df[dx_cols].values
-        du = df[du_cols].values
-        res = df[res_cols].values
-        r_ref = df[r_ref_cols].values
+        df = R.compute_targets(df)
+        X, Y, _transports = R.ecrl_features_and_target(df)
 
-        inputs = np.hstack([dx, du, r_ref])   # 16-D
-        input_list.append(inputs)
-        target_list.append(res)
-        source_tags.append(os.path.basename(dataset_dir))
+        valid = df["target_valid"].values & ~np.isnan(Y).any(axis=1)
+        if valid.sum() < 10:
+            continue
+
+        input_list.append(X[valid])
+        target_list.append(Y[valid])
+        source_tags.append(os.path.basename(f))
 
     if not input_list:
         raise ValueError(f"No valid data loaded from {dataset_dir}")
@@ -229,11 +243,11 @@ def main():
         description="Train ECRL residual with diversity-aware sample selection")
 
     parser.add_argument("--calm_dir", type=str,
-                        default="/home/dinesh/ecrl_datasets",
-                        help="Non-windy (calm) dataset directory")
+                        default="/home/dinesh/ecrl_datasets_v2",
+                        help="Non-windy (calm) dataset directory (raw schema_version=2 CSVs)")
     parser.add_argument("--windy_dir", type=str,
-                        default="/home/dinesh/ecrl_datasets/windy",
-                        help="Windy dataset directory")
+                        default="/home/dinesh/ecrl_datasets_v2/windy",
+                        help="Windy dataset directory (raw schema_version=2 CSVs)")
     parser.add_argument("--output_dir", type=str,
                         default="/home/dinesh/ecrl_ws/src/ommpc_ros2/models",
                         help="Directory to save output models")
@@ -459,7 +473,9 @@ def main():
     coord_names = [
         "Position X (res_0)", "Position Y (res_1)", "Position Z (res_2)",
         "Velocity X (res_3)", "Velocity Y (res_4)", "Velocity Z (res_5)",
-        "Attitude Roll (res_6)", "Attitude Pitch (res_7)", "Attitude Yaw (res_8)"
+        "Attitude res_6 (error-frame, ref. R_ref_k)",
+        "Attitude res_7 (error-frame, ref. R_ref_k)",
+        "Attitude res_8 (error-frame, ref. R_ref_k)",
     ]
 
     print("\n" + "="*60)
@@ -483,6 +499,9 @@ def main():
         "output_std": y_std.tolist(),
         "coordinate_names": coord_names,
         "test_rmse": coord_rmse.tolist(),
+        "residual_definition": "ecrl_adapter_v2",  # see docs/residual_conventions.md; output attitude
+                                                    # block is in error coordinates relative to R_ref_k,
+                                                    # NOT world frame -- transport before deployment.
         "training_info": {
             "strategy": "diversity-aware: mixed calm+windy, residual filtering, stratified spatial binning",
             "calm_files_used": args.calm_files,

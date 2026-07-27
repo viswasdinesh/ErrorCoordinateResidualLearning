@@ -356,9 +356,13 @@ public:
     udes = u_des_start;
   }
 
-  // solve QP problem
-  bool solve(Solution &sol)
+  // solve QP problem. status_val_out receives the raw OSQP work->info->status_val
+  // (e.g. OSQP_SOLVED, OSQP_MAX_ITER_REACHED, OSQP_PRIMAL_INFEASIBLE, ...) for
+  // logging/diagnostics; it is left at OSQP_UNSOLVED-ish sentinel -1 if
+  // osqp_setup() itself failed before a status was ever produced.
+  bool solve(Solution &sol, c_int &status_val_out)
   {
+    status_val_out = -1;
     // create OSQP data
     OSQPData osqp_data;
     OSQPSettings osqp_settings;
@@ -394,6 +398,7 @@ public:
     bool success = false;
     if (work != nullptr && work->info != nullptr)
     {
+      status_val_out = work->info->status_val;
       // Determine success based on OSQP solution status
       if (work->info->status_val == OSQP_SOLVED ||
           work->info->status_val == OSQP_SOLVED_INACCURATE)
@@ -926,7 +931,7 @@ public:
   }
 
   bool execMPC(const Odom_Data_t &odom,
-              Controller_Output_t &u, rclcpp::Time now_time)
+              Controller_Output_t &u, rclcpp::Time now_time, c_int &osqp_status_out)
   {
     const clock_t start = clock();
 
@@ -946,7 +951,7 @@ public:
 
     // 2. solve MPC optimization problem
     Solution solution;
-    bool mpc_solved = mpc_wrapper_.solve(solution);
+    bool mpc_solved = mpc_wrapper_.solve(solution, osqp_status_out);
 
     if (!mpc_solved)
       return false;

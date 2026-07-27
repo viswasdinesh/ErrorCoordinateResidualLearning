@@ -1,1 +1,0 @@
-/home/dinesh/ecrl_ws/src/build/ommpc_ros2/rosidl_generator_py/ommpc_ros2/msg/_reference_state_s.c

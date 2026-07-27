@@ -29,8 +29,7 @@ def generate_launch_description():
         name='ecrl_data_collector_node',
         output='screen',
         parameters=[
-            {'csv_filepath': '/home/dinesh/ecrl_datasets/polynomial1.csv'},
-            {'hover_percentage': 0.5}
+            {'csv_filepath': '/home/dinesh/ecrl_datasets_v2/polynomial1.csv'},
         ]
     )
 

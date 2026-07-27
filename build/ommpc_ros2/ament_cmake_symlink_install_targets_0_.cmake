@@ -1,1 +1,0 @@
-ament_cmake_symlink_install_targets("TARGET_FILES" "/home/dinesh/ecrl_ws/src/build/ommpc_ros2/rosidl_generator_py/ommpc_ros2/ommpc_ros2_s__rosidl_typesupport_fastrtps_c.cpython-310-x86_64-linux-gnu.so" "TARGETS" "ommpc_ros2__rosidl_typesupport_fastrtps_c__pyext" "DESTINATION" "local/lib/python3.10/dist-packages/ommpc_ros2")

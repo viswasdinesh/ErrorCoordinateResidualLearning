@@ -1,1 +1,0 @@
-/home/dinesh/ecrl_ws/src/build/ommpc_ros2/rosidl_generator_c/ommpc_ros2/msg/detail/reference_state__functions.h

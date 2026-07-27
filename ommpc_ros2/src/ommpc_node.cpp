@@ -157,7 +157,7 @@ private:
     rates_setpoint_pub_->publish(msg);
   }
 
-  void publishReferenceState(const Eigen::VectorXd& xdes, const Eigen::VectorXd& udes)
+  void publishReferenceState(const Eigen::VectorXd& xdes, const Eigen::VectorXd& udes, c_int osqp_status)
   {
     if (xdes.size() < 10 || udes.size() < 4)
     {
@@ -183,6 +183,10 @@ private:
     msg.body_rates.x = udes[1];
     msg.body_rates.y = udes[2];
     msg.body_rates.z = udes[3];
+
+    msg.thr2acc = ommpc_controller_.thr2acc;
+    msg.fsm_state = static_cast<uint8_t>(fsm_state_);
+    msg.osqp_status = static_cast<int32_t>(osqp_status);
 
     reference_pub_->publish(msg);
   }
@@ -342,6 +346,7 @@ private:
     // 2. FSM Logic
     Controller_Output_t u;
     bool mpc_success = false;
+    c_int osqp_status = -1;  // sentinel: MPC QP not invoked this tick (see ReferenceState.msg)
 
     switch (fsm_state_)
     {
@@ -407,14 +412,14 @@ private:
         }
 
         ommpc_controller_.setTextReference(quad_positions_, quad_velocities_, odom_data_, takeoff_start_yaw_, yaws_);
-        mpc_success = ommpc_controller_.execMPC(odom_data_, u, now);
+        mpc_success = ommpc_controller_.execMPC(odom_data_, u, now, osqp_status);
         break;
       }
 
       case HOVER: {
         // Run Hover NMPC
         ommpc_controller_.setHoverReference(hover_pose_);
-        mpc_success = ommpc_controller_.execMPC(odom_data_, u, now);
+        mpc_success = ommpc_controller_.execMPC(odom_data_, u, now, osqp_status);
 
         // Auto transition to tracking after 5s hover
         double t_since_hover = (now - hover_start_time).seconds();
@@ -433,20 +438,20 @@ private:
           double t_since_tracking = (now - tracking_start_time).seconds();
           getFigure8Reference(t_since_tracking, quad_positions_, quad_velocities_, yaws_);
           ommpc_controller_.setTextReference(quad_positions_, quad_velocities_, odom_data_, takeoff_start_yaw_, yaws_);
-          mpc_success = ommpc_controller_.execMPC(odom_data_, u, now);
+          mpc_success = ommpc_controller_.execMPC(odom_data_, u, now, osqp_status);
         }
         else if (trajectory_type_ == "circle")
         {
           double t_since_tracking = (now - tracking_start_time).seconds();
           getCircleReference(t_since_tracking, quad_positions_, quad_velocities_, yaws_);
           ommpc_controller_.setTextReference(quad_positions_, quad_velocities_, odom_data_, takeoff_start_yaw_, yaws_);
-          mpc_success = ommpc_controller_.execMPC(odom_data_, u, now);
+          mpc_success = ommpc_controller_.execMPC(odom_data_, u, now, osqp_status);
         }
         else if (trajectory_type_ == "text")
         {
           getTxtDes();
           ommpc_controller_.setTextReference(quad_positions_, quad_velocities_, odom_data_, takeoff_start_yaw_, yaws_);
-          mpc_success = ommpc_controller_.execMPC(odom_data_, u, now);
+          mpc_success = ommpc_controller_.execMPC(odom_data_, u, now, osqp_status);
         }
         else if (trajectory_type_ == "poly")
         {
@@ -456,7 +461,7 @@ private:
             double traj_time = (now - traj_info.traj_start_time).seconds();
             ommpc_controller_.setTrajectoryReference(traj_info.traj, traj_time, hover_pose_(3), traj_info.yaw_traj,
                                                      odom_data_);
-            mpc_success = ommpc_controller_.execMPC(odom_data_, u, now);
+            mpc_success = ommpc_controller_.execMPC(odom_data_, u, now, osqp_status);
           }
           else
           {
@@ -497,7 +502,7 @@ private:
         }
 
         ommpc_controller_.setTextReference(quad_positions_, quad_velocities_, odom_data_, hover_pose_(3), yaws_);
-        mpc_success = ommpc_controller_.execMPC(odom_data_, u, now);
+        mpc_success = ommpc_controller_.execMPC(odom_data_, u, now, osqp_status);
         break;
       }
     }
@@ -510,12 +515,16 @@ private:
       Eigen::VectorXd xdes(10);
       Eigen::VectorXd udes(4);
       ommpc_controller_.getDesiredStart(xdes, udes);
-      publishReferenceState(xdes, udes);
+      publishReferenceState(xdes, udes, osqp_status);
 
-      // Update recursive least squares thrust estimator when armed and in offboard
+      // Update recursive least squares thrust estimator only in HOVER/TRACKING.
+      // ARMED_WAIT/TAKEOFF/LAND have poor or transient thrust excitation and would let
+      // thr2acc drift on exactly the data being collected for ECRL training (see
+      // docs/residual_conventions.md and ecrl_data_collector_node.cpp, which now logs
+      // this live estimate into every row).
       if (vehicle_status_.arming_state == px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED &&
           vehicle_status_.nav_state == px4_msgs::msg::VehicleStatus::NAVIGATION_STATE_OFFBOARD &&
-          (fsm_state_ != TAKEOFF || odom_data_.p(2) >= 0.15) && fsm_state_ != LAND)
+          (fsm_state_ == HOVER || fsm_state_ == TRACKING))
       {
         ommpc_controller_.estimateThrustModel(imu_data_.a, now);
       }

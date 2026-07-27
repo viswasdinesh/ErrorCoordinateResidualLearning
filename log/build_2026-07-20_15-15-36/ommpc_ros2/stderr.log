@@ -1,5 +1,0 @@
-failed to create symbolic link '/home/dinesh/ecrl_ws/src/build/ommpc_ros2/ament_cmake_python/ommpc_ros2/ommpc_ros2' because existing path cannot be removed: Is a directory
-gmake[2]: *** [CMakeFiles/ament_cmake_python_symlink_ommpc_ros2.dir/build.make:70: CMakeFiles/ament_cmake_python_symlink_ommpc_ros2] Error 1
-gmake[1]: *** [CMakeFiles/Makefile2:444: CMakeFiles/ament_cmake_python_symlink_ommpc_ros2.dir/all] Error 2
-gmake[1]: *** Waiting for unfinished jobs....
-gmake: *** [Makefile:146: all] Error 2

@@ -29,7 +29,7 @@ class TrajectoryGeneratorNode(Node):
         self.declare_parameter('z_min', 0.8)
         self.declare_parameter('z_max', 2.2)
         self.declare_parameter('delay_between_trajectories', 20.0) # seconds
-        self.declare_parameter('save_file', '/home/dinesh/ecrl_datasets/generated_trajectories.json')
+        self.declare_parameter('save_file', '/home/dinesh/ecrl_datasets_v2/generated_trajectories.json')
         self.declare_parameter('time_scales', [1.0, 1.25, 1.5])
         self.declare_parameter('windy', False)
         

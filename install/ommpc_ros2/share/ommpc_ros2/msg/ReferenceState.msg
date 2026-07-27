@@ -1,1 +1,0 @@
-/home/dinesh/ecrl_ws/src/ommpc_ros2/msg/ReferenceState.msg
