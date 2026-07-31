@@ -467,6 +467,7 @@ private:
           {
             // Trajectory ended, return to hover
             hover_pose_ << odom_data_.p(0), odom_data_.p(1), odom_data_.p(2), getYawFromQuaternion(odom_data_.q);
+            hover_start_time = now;
             fsm_state_ = HOVER;
             RCLCPP_INFO(this->get_logger(), "Poly Trajectory ended. Returning to HOVER.");
           }
@@ -517,14 +518,17 @@ private:
       ommpc_controller_.getDesiredStart(xdes, udes);
       publishReferenceState(xdes, udes, osqp_status);
 
-      // Update recursive least squares thrust estimator only in HOVER/TRACKING.
-      // ARMED_WAIT/TAKEOFF/LAND have poor or transient thrust excitation and would let
-      // thr2acc drift on exactly the data being collected for ECRL training (see
-      // docs/residual_conventions.md and ecrl_data_collector_node.cpp, which now logs
-      // this live estimate into every row).
+      // Update recursive least squares thrust estimator in HOVER/TRACKING, and
+      // during TAKEOFF once actually climbing (>0.15 m). TAKEOFF needs this: the
+      // initial thr2acc guess (from hover_percentage) is rarely exact, and without
+      // it correcting online the MPC's thrust command can saturate at the 0.9
+      // clamp in publishRatesSetpoint() before reaching the target altitude,
+      // stalling takeoff. ARMED_WAIT (zero commanded thrust) and LAND (descent
+      // dynamics) are excluded as poor/unreliable excitation for this estimator.
       if (vehicle_status_.arming_state == px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED &&
           vehicle_status_.nav_state == px4_msgs::msg::VehicleStatus::NAVIGATION_STATE_OFFBOARD &&
-          (fsm_state_ == HOVER || fsm_state_ == TRACKING))
+          (fsm_state_ == HOVER || fsm_state_ == TRACKING ||
+           (fsm_state_ == TAKEOFF && odom_data_.p(2) >= 0.15)))
       {
         ommpc_controller_.estimateThrustModel(imu_data_.a, now);
       }

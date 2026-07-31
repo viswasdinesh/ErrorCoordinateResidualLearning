@@ -12,8 +12,7 @@ Public API:
     load_raw_csv(path)              -> DataFrame (validated schema_version=2)
     compute_targets(df)             -> DataFrame with d_0..d_8 columns added
     ambient_features(df)            -> (X, feature_names)
-    ecrl_features_and_target(df)    -> (X, Y_errorframe, transport_info)
-    transport_ecrl_prediction_to_world(pred, transport_info) -> (N,9) world-frame
+    ecrl_features_and_target(df)    -> (X, Y) -- Y is d_k, world frame, same as ambient's target
     linearized_residual_diagnostic(df) -> DataFrame with old-style d_lin, |delta_x|
 """
 import argparse
@@ -177,25 +176,6 @@ def controller_error_state(x_ref: State, x_actual: State) -> np.ndarray:
     return out
 
 
-def reanchor_rotation(rot_vec: np.ndarray, R_old_anchor: np.ndarray, R_new_anchor: np.ndarray) -> np.ndarray:
-    """Exact SO(3) re-anchoring: rot_vec represents "R_old_anchor * Exp(rot_vec)"
-    (a specific, concrete rotation); returns the tangent vector that
-    represents that SAME rotation relative to R_new_anchor instead, i.e.
-    Log(R_new_anchor^T @ R_old_anchor @ Exp(rot_vec)).
-
-    The handoff brief describes this "transport" as going through the left
-    Jacobian (a first-order/linearized parallel transport). This
-    implementation instead composes the rotations exactly and re-extracts the
-    tangent vector via Log -- mathematically equivalent to the *exact* limit
-    of that transport (zero linearization error) and no more expensive to
-    evaluate offline. It is still "not orthogonal" in the sense the brief
-    warns about: it is a nonlinear map on rot_vec, not a fixed rotation matrix
-    applied to it.
-    """
-    R_target = R_old_anchor @ so3_exp(rot_vec)
-    return so3_log(R_new_anchor.T @ R_target)
-
-
 # ---------------------------------------------------------------------------
 # Raw CSV loading
 # ---------------------------------------------------------------------------
@@ -213,6 +193,18 @@ def load_raw_csv(path: str) -> pd.DataFrame:
         raise ValueError(f"{path}: schema_version={version}, this module only supports {SCHEMA_VERSION}. "
                           "Refusing to silently mix schemas.")
     df = pd.read_csv(path, comment="#")
+    # A file can contain a stray *repeated* header row (not just the leading
+    # one pandas already consumed) if ecrl_data_collector_node.cpp was
+    # restarted mid-collection while appending to the same path -- each
+    # restart reopens in append mode and rewrites its own header/comment
+    # line. Every real column is numeric, so coerce and drop whatever
+    # doesn't parse (the embedded header row's string values, in particular)
+    # rather than letting it silently corrupt dtypes downstream.
+    n_before = len(df)
+    df = df.apply(pd.to_numeric, errors="coerce")
+    df = df.dropna()
+    if len(df) < n_before:
+        print(f"  {path}: dropped {n_before - len(df)} non-numeric row(s) (likely a repeated in-file header)")
     df["_source_file"] = os.path.basename(path)
     return df
 
@@ -301,31 +293,36 @@ def ambient_features(df: pd.DataFrame) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# ECRL adapter: features + target in error coordinates relative to x_ref_k.
+# ECRL adapter: features in error coordinates relative to x_ref_k; target is
+# the SAME world-frame d_k as ambient (see docs/residual_conventions.md Sec.4
+# for why this changed from an earlier, reanchored-to-R_ref_k design).
 # ---------------------------------------------------------------------------
 ECRL_FEATURE_NAMES = ([f"dx_{i}" for i in range(9)] + [f"du_{i}" for i in range(4)] + [f"r_ref_{i}" for i in range(3)])
 
 
-class TransportInfo:
-    """Per-row (R_ref_k, R_meas_kp1) needed to move a prediction back to the
-    world frame that d_k lives in, produced alongside the ecrl target so
-    scoring code doesn't have to re-derive it."""
-
-    def __init__(self, R_ref_k: np.ndarray, R_meas_kp1: np.ndarray):
-        self.R_ref_k = R_ref_k
-        self.R_meas_kp1 = R_meas_kp1
-
-
-def ecrl_features_and_target(df: pd.DataFrame) -> "tuple[np.ndarray, np.ndarray, list]":
-    """Returns (X, Y_errorframe, transport_info_per_row).
+def ecrl_features_and_target(df: pd.DataFrame) -> "tuple[np.ndarray, np.ndarray]":
+    """Returns (X, Y).
 
     X: 16-D [controller error state (9) ; control error (4) ; Log(R_ref_k) (3)],
        matching the feature width used by the pre-refactor train_residuals*.py
        (dx/du/r_ref), for continuity with earlier experiments.
-    Y_errorframe: the SAME d_k as ambient's target (see compute_targets),
-       reparametrized so its rotation block is anchored at R_ref_k instead of
-       R_meas_{k+1} (docs/residual_conventions.md Sec.4). Requires d_k already
-       computed via compute_targets().
+    Y: d_k, unmodified, in world frame -- identical target to ambient_features'
+       caller. Requires d_k already computed via compute_targets().
+
+       Y used to reparametrize d_k's rotation block onto R_ref_k instead of
+       R_meas_{k+1} ("error coordinates" for the output too, not just the
+       input). That reanchoring is exact but not safe to train on: under any
+       real reference-tracking error (which is exactly when a wind
+       disturbance makes d_k interesting), Log(R_ref_k^T R_meas_kp1) is the
+       tracking error itself and dominates the reanchored value -- e.g.
+       tracking error ~0.17 rad swamping a true d_k rotation norm of
+       ~0.002 rad in one measured run. The network ends up fitting the
+       tracking-error term, and small absolute errors there are enormous
+       relative to the tiny true residual once transported back, making
+       predictions *worse than a zero-residual baseline* both in- and
+       out-of-distribution. Keeping the target in world frame (unreanchored)
+       avoids this: ecrl and ambient now differ only in their input features,
+       not in what they're scored against.
     """
     if not all(f"d_{i}" in df.columns for i in range(9)):
         raise ValueError("ecrl_features_and_target requires compute_targets(df) to have been run first")
@@ -333,51 +330,25 @@ def ecrl_features_and_target(df: pd.DataFrame) -> "tuple[np.ndarray, np.ndarray,
     n = len(df)
     X = np.full((n, 16), np.nan)
     Y = np.full((n, 9), np.nan)
-    transports = [None] * n
 
     for i, row in enumerate(df.itertuples()):
         if not getattr(row, "target_valid"):
             continue
         x_k = _row_state_k(row)
-        x_kp1 = _row_state_kp1(row)
         u_k = _row_control_applied(row)
         x_ref_k = _row_ref_k(row)
         u_ref_k = Control(row.thracc_ref_k, [row.wx_ref_k, row.wy_ref_k, row.wz_ref_k])
 
         dx = controller_error_state(x_ref_k, x_k)
         du = np.array([u_ref_k.thracc - u_k.thracc, *(u_ref_k.omega - u_k.omega)])
-        R_ref_k = quat_to_rot(x_ref_k.q)
-        r_ref = so3_log(R_ref_k)
+        r_ref = so3_log(quat_to_rot(x_ref_k.q))
         X[i, 0:9] = dx
         X[i, 9:13] = du
         X[i, 13:16] = r_ref
 
-        d_k = np.array([getattr(row, f"d_{j}") for j in range(9)])
-        R_meas_kp1 = quat_to_rot(x_kp1.q)
-        y_rot = reanchor_rotation(d_k[6:9], R_meas_kp1, R_ref_k)
-        Y[i, 0:6] = d_k[0:6]
-        Y[i, 6:9] = y_rot
-        transports[i] = TransportInfo(R_ref_k, R_meas_kp1)
+        Y[i, :] = [getattr(row, f"d_{j}") for j in range(9)]
 
-    return X, Y, transports
-
-
-def transport_ecrl_prediction_to_world(pred_errorframe: np.ndarray, transports: list) -> np.ndarray:
-    """Inverse of the reanchor applied in ecrl_features_and_target: brings a
-    model's error-frame prediction back to the same world-comparable frame as
-    d_k (and as ambient's prediction), so the two methods can be scored
-    identically. Both methods MUST be scored in world frame after transport
-    -- scoring ecrl in its own error frame would make the numbers
-    incomparable (see handoff brief)."""
-    n = pred_errorframe.shape[0]
-    out = np.full((n, 9), np.nan)
-    for i in range(n):
-        t = transports[i]
-        if t is None:
-            continue
-        out[i, 0:6] = pred_errorframe[i, 0:6]
-        out[i, 6:9] = reanchor_rotation(pred_errorframe[i, 6:9], t.R_ref_k, t.R_meas_kp1)
-    return out
+    return X, Y
 
 
 # ---------------------------------------------------------------------------

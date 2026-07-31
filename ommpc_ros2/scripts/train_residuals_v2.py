@@ -8,26 +8,31 @@ Strategy to avoid overfitting to specific wind parameters:
   2. Subsample trajectory files (not all 300+300) to limit data volume.
   3. Filter out near-zero residual rows (hovering/stationary) that
      add bulk without information.
-  4. Stratified spatial binning over the 16-D input space so every
-     region of the dynamics is represented roughly equally.
+  4. Stratified spatial binning over key input dimensions (adapter-dependent
+     -- see key_dims below) so every region of the dynamics is represented
+     roughly equally.
   5. Strong regularization: weight decay, early stopping, gradient
      clipping, and moderate network capacity.
 
 Data format (see docs/residual_conventions.md and scripts/residuals.py):
-  Trains on the *ecrl* adapter's (X, Y) pair from residuals.py, computed from
-  raw schema_version=2 logs produced by ecrl_data_collector_node.cpp:
-    X: 16-D [controller error state dx (9) ; control error du (4) ;
-             Log(R_ref_k) r_ref (3)]  -- same layout as the pre-refactor
+  Trains on one of residuals.py's two adapters, selected via --adapter:
+    ecrl (default): X is 16-D [controller error state dx (9) ; control error
+       du (4) ; Log(R_ref_k) r_ref (3)] -- same layout as the pre-refactor
        dataset, so the feature semantics below (dx_0..dx_5, du_0) still hold.
-    Y: 9-D residual against the exact nonlinear one-step model (not the old
-       linearized-model residual), with its attitude block (Y[:,6:9])
-       reparametrized into error coordinates relative to R_ref_k. A model
-       trained on this Y predicts in that SAME error frame -- transport its
-       output back to world frame with
-       residuals.py::transport_ecrl_prediction_to_world() before using it as
-       a world-frame correction (e.g. once wired into the MPC as an affine
-       QP offset). Do NOT point --calm_dir/--windy_dir at old
-       (schema_version=1) datasets; load_csv_files() below will reject them.
+    ambient: X is 8-D [body-frame velocity (3) ; body-frame measured rate (3) ;
+       thrust_norm_cmd (1) ; thr2acc (1)] -- no reference trajectory at all.
+  Both adapters regress onto the exact same Y: d_k, the residual against the
+  exact nonlinear one-step model (not the old linearized-model residual), in
+  world frame -- the model predicts directly in the frame it will be used in
+  (e.g. once wired into the MPC as an affine QP offset), no further transform
+  needed. (An earlier version of the ecrl adapter reanchored Y's attitude
+  block onto R_ref_k; that made the target dominated by reference-tracking
+  error rather than the true residual whenever tracking error was
+  non-negligible -- e.g. under wind -- and measurably made trained models
+  worse than a zero-residual baseline both in- and out-of-distribution. See
+  residuals.py::ecrl_features_and_target and docs/residual_conventions.md
+  Sec.4.) Do NOT point --calm_dir/--windy_dir at old (schema_version=1)
+  datasets; load_csv_files() below will reject them.
 """
 
 import os
@@ -97,12 +102,13 @@ class NormalizedResidualMLP(nn.Module):
 
 
 # ─── Data Loading ───────────────────────────────────────────────────────
-def load_csv_files(dataset_dir, max_files=None, rng=None):
+def load_csv_files(dataset_dir, max_files=None, rng=None, adapter="ecrl"):
     """Load raw schema_version=2 CSVs from a single directory (as produced by
     ecrl_data_collector_node.cpp), optionally subsampling files, and turn each
-    into (X, y) via residuals.py's shared target + ecrl adapter. Every
-    per-row residual definition lives in residuals.py, not here -- this
-    function only does file discovery/subsampling and stacks the results.
+    into (X, y) via residuals.py's shared target + the selected adapter
+    ("ecrl" or "ambient"). Every per-row residual definition lives in
+    residuals.py, not here -- this function only does file discovery/
+    subsampling and stacks the results.
     """
     csv_pattern = os.path.join(dataset_dir, "polynomial*.csv")
     all_files = sorted(glob.glob(csv_pattern))
@@ -133,9 +139,15 @@ def load_csv_files(dataset_dir, max_files=None, rng=None):
             continue
 
         df = R.compute_targets(df)
-        X, Y, _transports = R.ecrl_features_and_target(df)
+        if adapter == "ecrl":
+            X, Y = R.ecrl_features_and_target(df)
+        elif adapter == "ambient":
+            X = R.ambient_features(df)
+            Y = df[[f"d_{i}" for i in range(9)]].values
+        else:
+            raise ValueError(f"unknown adapter '{adapter}'")
 
-        valid = df["target_valid"].values & ~np.isnan(Y).any(axis=1)
+        valid = df["target_valid"].values & ~np.isnan(X).any(axis=1) & ~np.isnan(Y).any(axis=1)
         if valid.sum() < 10:
             continue
 
@@ -166,11 +178,12 @@ def filter_trivial_residuals(X, y, percentile=10):
     return X[mask], y[mask]
 
 
-def stratified_bin_sampling(X, y, n_target, n_bins_per_dim=5, rng=None):
+def stratified_bin_sampling(X, y, n_target, key_dims, n_bins_per_dim=5, rng=None):
     """Select ~n_target samples by stratified binning over key input dimensions.
 
-    We bin over a few high-information dimensions (position errors, velocity
-    errors, thrust) so that every region of the dynamics is represented,
+    We bin over a few high-information dimensions (position/velocity errors
+    and thrust for ecrl; body velocity/rate and thrust for ambient -- see
+    key_dims below) so that every region of the dynamics is represented,
     rather than over-representing the most common operating point.
 
     For generalization, this ensures the model has seen diverse states instead
@@ -184,9 +197,6 @@ def stratified_bin_sampling(X, y, n_target, n_bins_per_dim=5, rng=None):
         print(f"  Stratified sampling: data ({N}) <= target ({n_target}), keeping all.")
         return X, y
 
-    # Key dimensions for binning:
-    #   dx_0..dx_2 (position error), dx_3..dx_5 (velocity error), du_0 (thrust)
-    key_dims = [0, 1, 2, 3, 4, 5, 9]   # indices into the 16-D input
     X_key = X[:, key_dims]
 
     # Quantile-based bins to handle non-uniform distributions
@@ -251,6 +261,10 @@ def main():
     parser.add_argument("--output_dir", type=str,
                         default="/home/dinesh/ecrl_ws/src/ommpc_ros2/models",
                         help="Directory to save output models")
+    parser.add_argument("--adapter", type=str, default="ecrl", choices=["ecrl", "ambient"],
+                        help="Feature adapter: 'ecrl' (error-state, reference-relative) or "
+                             "'ambient' (body-frame velocity/rate/thrust, no reference). "
+                             "Both regress onto the same world-frame d_k target.")
 
     # ── Sample selection knobs ──
     parser.add_argument("--calm_files", type=int, default=30,
@@ -294,16 +308,24 @@ def main():
     print("STEP 1: Loading data")
     print("="*60)
 
+    print(f"  Adapter: {args.adapter}")
     X_calm, y_calm = load_csv_files(args.calm_dir,
-                                     max_files=args.calm_files, rng=rng)
-    X_windy, y_windy = load_csv_files(args.windy_dir,
-                                       max_files=args.windy_files, rng=rng)
-
+                                     max_files=args.calm_files, rng=rng, adapter=args.adapter)
     print(f"\n  Calm pool:  {X_calm.shape[0]:>8d} samples")
-    print(f"  Windy pool: {X_windy.shape[0]:>8d} samples")
 
-    X_all = np.vstack([X_calm, X_windy])
-    y_all = np.vstack([y_calm, y_windy])
+    # windy_files=0 means "no windy pool this round" (e.g. a calm-only
+    # collection run) rather than an error -- load_csv_files() would otherwise
+    # raise FileNotFoundError trying to glob/subsample down to zero files.
+    if args.windy_files > 0:
+        X_windy, y_windy = load_csv_files(args.windy_dir,
+                                           max_files=args.windy_files, rng=rng, adapter=args.adapter)
+        print(f"  Windy pool: {X_windy.shape[0]:>8d} samples")
+        X_all = np.vstack([X_calm, X_windy])
+        y_all = np.vstack([y_calm, y_windy])
+    else:
+        print("  Windy pool:        0 samples (skipped, --windy_files 0)")
+        X_all, y_all = X_calm, y_calm
+
     print(f"  Merged:     {X_all.shape[0]:>8d} samples")
 
     # ──────────────────────────────────────────────────────────────────
@@ -323,8 +345,13 @@ def main():
     print("STEP 3: Stratified diversity sampling")
     print("="*60)
 
+    # ecrl X layout: dx_0..dx_8 (9) du_0..du_3 (4) r_ref_0..r_ref_2 (3) -- bin on
+    #   position/velocity error (dx_0..dx_5) and thrust error (du_0, index 9).
+    # ambient X layout: v_body (3) w_body (3) thrust_norm_cmd (1) thr2acc (1) --
+    #   bin on velocity/rate (0..5) and thrust command (index 6).
+    key_dims = [0, 1, 2, 3, 4, 5, 9] if args.adapter == "ecrl" else [0, 1, 2, 3, 4, 5, 6]
     X_sel, y_sel = stratified_bin_sampling(
-        X_filt, y_filt, n_target=args.target_samples,
+        X_filt, y_filt, n_target=args.target_samples, key_dims=key_dims,
         n_bins_per_dim=args.n_bins, rng=rng)
 
     # ──────────────────────────────────────────────────────────────────
@@ -437,7 +464,7 @@ def main():
             best_val = vloss
             wait = 0
             torch.save(model.state_dict(),
-                       os.path.join(args.output_dir, "best_model.pt"))
+                       os.path.join(args.output_dir, f"{args.adapter}_best_model.pt"))
         else:
             wait += 1
             if wait >= args.patience:
@@ -451,7 +478,7 @@ def main():
     # 8. Evaluate on test set
     # ──────────────────────────────────────────────────────────────────
     model.load_state_dict(
-        torch.load(os.path.join(args.output_dir, "best_model.pt"),
+        torch.load(os.path.join(args.output_dir, f"{args.adapter}_best_model.pt"),
                    weights_only=True))
     model.eval()
 
@@ -473,9 +500,7 @@ def main():
     coord_names = [
         "Position X (res_0)", "Position Y (res_1)", "Position Z (res_2)",
         "Velocity X (res_3)", "Velocity Y (res_4)", "Velocity Z (res_5)",
-        "Attitude res_6 (error-frame, ref. R_ref_k)",
-        "Attitude res_7 (error-frame, ref. R_ref_k)",
-        "Attitude res_8 (error-frame, ref. R_ref_k)",
+        "Attitude X (res_6)", "Attitude Y (res_7)", "Attitude Z (res_8)",
     ]
 
     print("\n" + "="*60)
@@ -499,9 +524,11 @@ def main():
         "output_std": y_std.tolist(),
         "coordinate_names": coord_names,
         "test_rmse": coord_rmse.tolist(),
-        "residual_definition": "ecrl_adapter_v2",  # see docs/residual_conventions.md; output attitude
-                                                    # block is in error coordinates relative to R_ref_k,
-                                                    # NOT world frame -- transport before deployment.
+        "adapter": args.adapter,
+        "residual_definition": "d_k_v3",  # see docs/residual_conventions.md; output is world-frame d_k
+                                           # directly (the ecrl adapter's earlier R_ref_k-reanchored
+                                           # attitude target was dropped -- it made tracking error
+                                           # dominate d_k). ambient regresses onto the identical target.
         "training_info": {
             "strategy": "diversity-aware: mixed calm+windy, residual filtering, stratified spatial binning",
             "calm_files_used": args.calm_files,
@@ -515,7 +542,7 @@ def main():
         }
     }
 
-    meta_path = os.path.join(args.output_dir, "ecrl_metadata.json")
+    meta_path = os.path.join(args.output_dir, f"{args.adapter}_metadata.json")
     with open(meta_path, "w") as f:
         json.dump(metadata, f, indent=4)
     print(f"\n  Saved metadata → {meta_path}")
@@ -537,7 +564,7 @@ def main():
 
     # ONNX – unnormalised
     try:
-        onnx_path = os.path.join(args.output_dir, "ecrl_model.onnx")
+        onnx_path = os.path.join(args.output_dir, f"{args.adapter}_model.onnx")
         torch.onnx.export(model, dummy, onnx_path,
                           export_params=True, opset_version=11,
                           do_constant_folding=True,
@@ -548,7 +575,7 @@ def main():
 
     # ONNX – normalised
     try:
-        onnx_norm = os.path.join(args.output_dir, "ecrl_model_normalized.onnx")
+        onnx_norm = os.path.join(args.output_dir, f"{args.adapter}_model_normalized.onnx")
         torch.onnx.export(norm_model, dummy, onnx_norm,
                           export_params=True, opset_version=11,
                           do_constant_folding=True,
@@ -559,7 +586,7 @@ def main():
 
     # TorchScript – unnormalised
     try:
-        ts_path = os.path.join(args.output_dir, "ecrl_model.pt")
+        ts_path = os.path.join(args.output_dir, f"{args.adapter}_model.pt")
         torch.jit.script(model).save(ts_path)
         print(f"  TorchScript    → {ts_path}")
     except Exception as e:
@@ -567,7 +594,7 @@ def main():
 
     # TorchScript – normalised
     try:
-        ts_norm = os.path.join(args.output_dir, "ecrl_model_normalized.pt")
+        ts_norm = os.path.join(args.output_dir, f"{args.adapter}_model_normalized.pt")
         torch.jit.script(norm_model).save(ts_norm)
         print(f"  TorchScript (norm) → {ts_norm}")
     except Exception as e:
@@ -584,7 +611,7 @@ def main():
     plt.title("Diversity-Aware Residual Training Curves")
     plt.legend()
     plt.grid(True)
-    plot_path = os.path.join(args.output_dir, "training_curves.png")
+    plot_path = os.path.join(args.output_dir, f"{args.adapter}_training_curves.png")
     plt.savefig(plot_path, dpi=150)
     plt.close()
     print(f"  Training curves → {plot_path}")

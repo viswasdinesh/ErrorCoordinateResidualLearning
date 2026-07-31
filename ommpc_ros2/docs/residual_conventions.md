@@ -120,9 +120,40 @@ effect, wind — the thing ECRL is trying to learn) and, if `dt` deviates from
 the nominal control period, integration/measurement-timing error. It does
 **not** absorb reference-trajectory infeasibility, because there is no
 reference in this formula at all. This is what makes it definition-agnostic:
-`ambient` and `ecrl` adapters (Task 3) both regress onto the same `d_k`, they
-only differ in what *features* they use to predict it and what frame the
-prediction is expressed in before scoring.
+`ambient` and `ecrl` adapters (Task 3) both regress onto the exact same
+`d_k`, unmodified, in world frame — they only differ in what *features* they
+use to predict it (`ambient`: body-frame velocity/rate/thrust; `ecrl`: the
+controller's error state relative to the reference). Neither adapter
+transforms the target.
+
+### Why the `ecrl` target is *not* reanchored onto R_ref_k (tried, reverted)
+
+An earlier version of `ecrl_features_and_target` additionally reparametrized
+`d_k`'s rotation block from being anchored at `R_meas_{k+1}` onto `R_ref_k`
+— i.e. both the *features* and the *target* would live in "error
+coordinates relative to the reference." The reanchoring itself,
+`Log(R_new^T R_old Exp(v))`, is an exact, invertible SO(3) change of basis
+with no approximation error.
+
+The problem is what dominates it. `Log(R_ref_k^T R_meas_{k+1})` is the
+reference-tracking error, and whenever it isn't tiny — which is exactly the
+condition a wind disturbance produces — it dominates the reanchored value,
+because the true `d_k` rotation norm is on the order of the one-step
+model-mismatch (~1e-3–1e-2 rad), while tracking error under wind was
+measured at ~0.17 rad in this project's own data: two orders of magnitude
+larger. A network trained on that target learns to reproduce the
+tracking-error term, and even a small *absolute* error there is enormous
+relative to the true residual once transported back to world frame for
+scoring. Measured effect: trained models scored *worse than a zero-residual
+baseline* (predicting exactly zero every time), both in-distribution on the
+training wind scene and out-of-distribution on a held-out wind scene.
+
+Conclusion: reanchoring a *target* onto a reference frame is only safe when
+that reference tracks tightly (tracking error ≪ the signal you're trying to
+isolate). Reanchoring *features* (the input side) has no such requirement,
+since a bad/uninformative feature only costs you sample efficiency, not a
+corrupted supervision signal — that's why `ecrl`'s error-state *features*
+were kept and only the *target* reanchoring was reverted.
 
 ### Relationship to Task 4's affine QP term (not implemented in this change)
 
