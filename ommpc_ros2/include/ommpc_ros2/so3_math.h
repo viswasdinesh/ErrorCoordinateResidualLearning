@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Eigen/Eigen>
+#include <algorithm>
 #include <iostream>
 #include <vector>
 
@@ -35,8 +36,15 @@ public:
     }
 
     static Eigen::Vector3d log(const Eigen::Matrix3d& R) {
-        double theta = acos((R.trace() - 1) / 2);
-        
+        // Clamp before acos: for a near-identity R (common at hover), the
+        // trace computed in floating point can drift a few ULPs past 3.0,
+        // pushing this argument fractionally outside [-1, 1] -- acos() of
+        // an out-of-domain value is NaN (IEEE 754), which then propagates
+        // through every downstream use of this rotation. Standard fix (same
+        // one Sophus/Eigen-based SO3 implementations use).
+        double cos_theta = std::clamp((R.trace() - 1) / 2, -1.0, 1.0);
+        double theta = acos(cos_theta);
+
         if (theta < 1e-10) {
             return vee(R - Eigen::Matrix3d::Identity());
         }

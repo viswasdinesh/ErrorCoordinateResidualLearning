@@ -24,7 +24,13 @@ import pandas as pd
 
 GRAVITY = 9.81
 E3 = np.array([0.0, 0.0, 1.0])
-SCHEMA_VERSION = 2
+# v2: raw state/control/reference/timestamp only. v3 adds trailing
+# trim_norm_k/ecrl_norm_k/correction_clipped_k diagnostic columns; v4 adds
+# trim_time_us_k/ecrl_time_us_k/qp_solve_time_us_k/total_time_us_k compute-
+# time diagnostics (see ecrl_data_collector_node.cpp). Nothing below reads
+# any of these, so all schemas load identically for residual/feature
+# computation.
+SUPPORTED_SCHEMA_VERSIONS = (2, 3, 4)
 
 
 # ---------------------------------------------------------------------------
@@ -185,13 +191,13 @@ def load_raw_csv(path: str) -> pd.DataFrame:
     if not first_line.startswith("# ecrl_schema_version="):
         raise ValueError(
             f"{path}: missing '# ecrl_schema_version=' header line. "
-            "This loader only accepts schema_version=2 raw logs from "
+            "This loader only accepts schema_version=2/3/4 raw logs from "
             "ecrl_data_collector_node.cpp; do not feed it old (pre-refactor) "
             "CSVs that already contain baked-in residual columns.")
     version = int(first_line.strip().split("=")[1])
-    if version != SCHEMA_VERSION:
-        raise ValueError(f"{path}: schema_version={version}, this module only supports {SCHEMA_VERSION}. "
-                          "Refusing to silently mix schemas.")
+    if version not in SUPPORTED_SCHEMA_VERSIONS:
+        raise ValueError(f"{path}: schema_version={version}, this module only supports "
+                          f"{SUPPORTED_SCHEMA_VERSIONS}. Refusing to silently mix schemas.")
     df = pd.read_csv(path, comment="#")
     # A file can contain a stray *repeated* header row (not just the leading
     # one pandas already consumed) if ecrl_data_collector_node.cpp was

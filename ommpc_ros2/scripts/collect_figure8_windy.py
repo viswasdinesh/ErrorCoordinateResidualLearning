@@ -31,9 +31,10 @@ down at the end -- nothing is left running):
      default is a stale leftover from earlier work -- always pass this
      explicitly).
   6. waits for "Transitioning from HOVER to TRACKING" in the ommpc_node log,
-     then lets TRACKING run for `--periods` x `--period_s` seconds (the
-     figure-8 period is hardcoded to 20s in ommpc_node.cpp's
-     getFigure8Reference()). No commanded stop is needed for figure8/circle
+     then lets TRACKING run for `--periods` x `--period_s` seconds (--period_s
+     is also forwarded to ommpc_node as figure8_period_s, a runtime param --
+     shorten it for a more agile, higher-velocity/acceleration reference
+     through the same fixed spatial amplitude). No commanded stop is needed for figure8/circle
      trajectories -- the FSM loops TRACKING forever until torn down.
   7. tears everything down: SIGKILL to each subprocess's *process group*
      (every subprocess is started via start_new_session=True so its whole
@@ -69,10 +70,12 @@ Usage:
 import argparse
 import glob
 import os
+import random
 import resource
 import signal
 import subprocess
 import sys
+import threading
 import time
 
 # ---------------------------------------------------------------------------
@@ -238,6 +241,34 @@ def wait_for_pattern(log_path: str, pattern: str, timeout_s: float, proc: subpro
     return False
 
 
+def gust_loop(stop_event: threading.Event, wind_topic: str, base_x: float, base_y: float,
+              gust_std: float, interval_s: float, seed: int):
+    """Background thread: re-publishes the world's wind topic every
+    interval_s with a fresh independent Gaussian perturbation around
+    (base_x, base_y). Deliberately independent draws each tick (not a
+    random walk) so consecutive gusts aren't autocorrelated -- the point is
+    disturbance content faster than integral_trim_tau's leaky-integrator
+    time constant (default 10s), which the base wind_x/wind_y (constant)
+    plus the eval world's own baked-in sin+noise modulation (9-13s periods,
+    comparable to tau -- see sim_worlds/ecrl_windy_eval.sdf) mostly is not.
+    Runs until stop_event is set (from teardown()); errors from individual
+    `gz topic` publishes are logged but don't abort the run."""
+    rng = random.Random(seed)
+    tick = 0
+    while not stop_event.wait(interval_s):
+        tick += 1
+        gx = base_x + rng.gauss(0.0, gust_std)
+        gy = base_y + rng.gauss(0.0, gust_std)
+        cmd = ["gz", "topic", "-t", wind_topic, "-m", "gz.msgs.Wind", "-p",
+               f"linear_velocity: {{x: {gx:.3f}, y: {gy:.3f}, z: 0.0}}, enable_wind: true"]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if res.returncode != 0:
+                log(f"[gust] tick {tick}: gz topic returned {res.returncode}: {res.stdout} {res.stderr}")
+        except Exception as e:
+            log(f"[gust] tick {tick}: gz topic call failed: {e}")
+
+
 # ---------------------------------------------------------------------------
 # Main orchestration
 # ---------------------------------------------------------------------------
@@ -253,12 +284,61 @@ def main():
                           "different from both sim_worlds/*.sdf baked-in defaults "
                           "(train=[1.3,-0.7], eval=[-0.8,1.4]) for a genuinely held-out direction.")
     ap.add_argument("--wind_y", type=float, default=0.7)
+    ap.add_argument("--gusty", action="store_true",
+                     help="On top of the constant --wind_x/--wind_y base and the eval world's own "
+                          "baked-in sin+noise modulation, actively re-publish the wind topic every "
+                          "--gust_interval_s with a fresh independent Gaussian perturbation "
+                          "(std --gust_std) -- disturbance content faster than integral_trim_tau's "
+                          "default 10s time constant, to test whether the ecrl NN correction adds "
+                          "anything beyond the disturbance-observer trim once the disturbance isn't "
+                          "well-approximated by a slow-tracked constant bias.")
+    ap.add_argument("--gust_std", type=float, default=1.5,
+                     help="Std dev (m/s) of each gust perturbation around the base wind vector. Only used with --gusty.")
+    ap.add_argument("--gust_interval_s", type=float, default=2.0,
+                     help="Seconds between gust re-publishes. Only used with --gusty.")
+    ap.add_argument("--gust_seed", type=int, default=42, help="RNG seed for gust perturbations (reproducibility).")
     ap.add_argument("--periods", type=int, default=6, help="Number of figure-8 periods to record in TRACKING")
-    ap.add_argument("--period_s", type=float, default=20.0, help="Figure-8 period, s (hardcoded in ommpc_node.cpp)")
+    ap.add_argument("--period_s", type=float, default=20.0,
+                     help="Figure-8/circle period, s -- forwarded to ommpc_node as -p "
+                          "figure8_period_s:=X (runtime param, was hardcoded to 20.0 pre-agile-"
+                          "trajectory support). Also used for this script's own recording-duration "
+                          "math (record_s = periods * period_s), so the two always stay in sync. "
+                          "Shorter = higher peak velocity/acceleration through the same spatial "
+                          "amplitude (A=B=1.5m figure8, R=1.5m circle, both fixed in ommpc_node.cpp).")
     ap.add_argument("--px4_ready_timeout", type=float, default=300.0)
     ap.add_argument("--tracking_timeout", type=float, default=180.0,
                      help="Max time to wait for the HOVER->TRACKING transition after node launch")
     ap.add_argument("--no_teardown", action="store_true", help="Debug only: skip teardown, leave everything running")
+    ap.add_argument("--enable_residual_correction", action="store_true",
+                     help="Enable the live ecrl residual QP correction (ommpc_node param, off by "
+                          "default -- see docs/residual_conventions.md 'Relationship to Task 4's "
+                          "affine QP term'). Omitting this flag reproduces today's baseline behavior "
+                          "unchanged.")
+    ap.add_argument("--enable_ambient_correction", action="store_true",
+                     help="Enable the live ambient-adapter residual QP correction (8-D body-frame "
+                          "vel/rate/thrust features, no reference trajectory -- the alternative "
+                          "adapter to --enable_residual_correction's ecrl features). Mutually "
+                          "exclusive in practice: if both are set, ecrl takes priority and ambient "
+                          "will not run (ommpc_node logs a warning).")
+    ap.add_argument("--residual_clip_norm", type=float, default=0.08,
+                     help="Shared cap on the combined NN+trim correction norm, and on trim's own "
+                          "internal d_hat_ state. Applied whenever --enable_residual_correction, "
+                          "--enable_ambient_correction, and/or --enable_integral_trim is set (a "
+                          "no-op otherwise).")
+    ap.add_argument("--enable_integral_trim", action="store_true",
+                     help="Enable the live disturbance-observer integral trim (ommpc_node param, off "
+                          "by default). Complementary to --enable_residual_correction: targets the "
+                          "steady-state offset a stateless per-cycle correction can't close. Can be "
+                          "combined with --enable_residual_correction.")
+    ap.add_argument("--integral_trim_tau", type=float, default=10.0,
+                     help="Only used when --enable_integral_trim is set. Leaky-integrator time "
+                          "constant, seconds.")
+    ap.add_argument("--mpc_param", action="append", default=[], metavar="KEY=VALUE",
+                     help="Override an MPC_params.* field from config/params.yaml at launch, e.g. "
+                          "--mpc_param Q_pos_xy=10.0 --mpc_param R_thrust=0.005. Repeatable. "
+                          "Forwarded as -p MPC_params.KEY:=VALUE (read once at ommpc_node startup, "
+                          "same as the correction/trim flags -- not settable afterward). See "
+                          "config/params.yaml MPC_params: block for valid field names.")
     args = ap.parse_args()
 
     csv_dir = os.path.dirname(os.path.abspath(args.csv_path))
@@ -290,6 +370,8 @@ def main():
 
     procs = {}  # name -> (Popen, pgid)
     log_files = []
+    gust_stop_event = threading.Event()
+    gust_thread = None
 
     def start(name, argv, cwd, log_path, env=None, stdin_pipe=False):
         f = open(log_path, "wb", buffering=0)
@@ -314,6 +396,10 @@ def main():
             log("[teardown] --no_teardown set, leaving all processes running")
             return
         log("=== tearing down ===")
+        if gust_thread is not None:
+            gust_stop_event.set()
+            gust_thread.join(timeout=10.0)
+            log("[teardown] gust thread stopped")
         # Reverse start order: collector, ommpc_node, px4/gz, microxrceagent.
         for name in ["collector", "ommpc_node", "px4", "microxrceagent"]:
             p = procs.get(name)
@@ -396,12 +482,56 @@ def main():
         else:
             log("  wind enabled.")
 
+        if args.gusty:
+            log(f"  gusty mode: re-publishing wind every {args.gust_interval_s:.1f}s with "
+                f"N(0, {args.gust_std:.2f}) m/s perturbation (seed={args.gust_seed})")
+            gust_thread = threading.Thread(
+                target=gust_loop,
+                args=(gust_stop_event, wind_topic, args.wind_x, args.wind_y,
+                      args.gust_std, args.gust_interval_s, args.gust_seed),
+                daemon=True)
+            gust_thread.start()
+
         # 4. ommpc_node, trajectory=figure8 forced via CLI -p (read once at
         # startup, see ommpc_node.cpp -- config/params.yaml itself is NOT
         # modified, only overridden on this invocation).
+        residual_overrides = ""
+        if args.enable_residual_correction or args.enable_ambient_correction or args.enable_integral_trim:
+            # residual_clip_norm is shared by all paths -- it caps the
+            # combined NN+trim correction AND trim's own internal d_hat_
+            # state (see Parameter_t's doc comment in ommpc_controller.hpp)
+            # -- so it must be passed whenever any is enabled, not just
+            # enable_residual_correction. Previously only forwarded in the
+            # enable_residual_correction branch, so a trim-only run silently
+            # kept the node's default 0.08 no matter what --residual_clip_norm
+            # was passed here.
+            residual_overrides += f" -p residual_clip_norm:={args.residual_clip_norm}"
+            log(f"residual_clip_norm={args.residual_clip_norm}")
+        if args.enable_residual_correction:
+            residual_overrides += " -p enable_residual_correction:=true"
+            log("enable_residual_correction=true")
+        if args.enable_ambient_correction:
+            residual_overrides += " -p enable_ambient_correction:=true"
+            log("enable_ambient_correction=true")
+        if args.enable_integral_trim:
+            residual_overrides += (f" -p enable_integral_trim:=true "
+                                    f"-p integral_trim_tau:={args.integral_trim_tau}")
+            log(f"enable_integral_trim=true (integral_trim_tau={args.integral_trim_tau})")
+
+        mpc_overrides = ""
+        for kv in args.mpc_param:
+            if "=" not in kv:
+                raise ValueError(f"--mpc_param must be KEY=VALUE, got: {kv!r}")
+            key, value = kv.split("=", 1)
+            mpc_overrides += f" -p MPC_params.{key}:={value}"
+            log(f"MPC_params.{key}={value}")
+
+        period_override = f" -p figure8_period_s:={args.period_s}"
+        log(f"figure8_period_s={args.period_s}")
         ros_bash = (f"source {ros_setup} && source {ws_setup} && "
                     f"exec ros2 run ommpc_ros2 ommpc_node --ros-args "
-                    f"--params-file {params_yaml} -p trajectory:=figure8")
+                    f"--params-file {params_yaml} -p trajectory:=figure8{period_override}"
+                    f"{residual_overrides}{mpc_overrides}")
         start("ommpc_node", ["bash", "-lc", ros_bash], cwd=args.ws_dir, log_path=ommpc_log_path)
 
         # 5. ecrl_data_collector_node, pointed at the fresh CSV path.

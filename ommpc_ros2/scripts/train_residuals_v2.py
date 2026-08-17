@@ -2,6 +2,15 @@
 """
 train_residuals_v2.py — Diversity-Aware Residual Training for ECRL
 
+CLI entry point / orchestrator only -- the implementation is split across:
+  residual_data.py     -- loading, filtering, diversity sampling, splitting
+  residual_model.py    -- model architecture + training loop
+  residual_evaluate.py -- test-set evaluation, metadata, export, plots
+This file wires them together via argparse and re-exports ResidualMLP/
+NormalizedResidualMLP/load_csv_files at module level so existing importers
+(scripts/knode_training/train_knode.py, scripts/sample_efficiency_sweep.py)
+keep working unmodified against `from train_residuals_v2 import ...`.
+
 Strategy to avoid overfitting to specific wind parameters:
   1. Mix both windy and non-windy data so the residual learns
      *general* model mismatch, not just wind compensation.
@@ -37,217 +46,23 @@ Data format (see docs/residual_conventions.md and scripts/residuals.py):
 
 import os
 import sys
-import glob
-import json
 import argparse
 import numpy as np
-import pandas as pd
 import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
-from torch.nn.utils import spectral_norm, remove_spectral_norm
-import matplotlib.pyplot as plt
-from tqdm import tqdm
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import residuals as R  # noqa: E402
+from residual_data import (  # noqa: E402
+    load_csv_files, filter_trivial_residuals, stratified_bin_sampling,
+    normalize, split_train_val_test,
+)
+from residual_model import ResidualMLP, NormalizedResidualMLP, train_model  # noqa: E402
+from residual_evaluate import (  # noqa: E402
+    evaluate_test_set, save_metadata, export_models, plot_training_curves,
+)
+
+__all__ = ["ResidualMLP", "NormalizedResidualMLP", "load_csv_files"]
 
 
-# ─── Dataset ────────────────────────────────────────────────────────────
-class ResidualDataset(Dataset):
-    def __init__(self, inputs, targets):
-        self.inputs = torch.tensor(inputs, dtype=torch.float32)
-        self.targets = torch.tensor(targets, dtype=torch.float32)
-
-    def __len__(self):
-        return len(self.inputs)
-
-    def __getitem__(self, idx):
-        return self.inputs[idx], self.targets[idx]
-
-
-# ─── Model ──────────────────────────────────────────────────────────────
-class ResidualMLP(nn.Module):
-    def __init__(self, input_dim=16, output_dim=9,
-                 hidden_dims=[128, 128, 128], activation='tanh'):
-        super().__init__()
-        layers = []
-        prev_dim = input_dim
-        act_fn = {'relu': nn.ReLU, 'tanh': nn.Tanh, 'elu': nn.ELU}[activation]
-        for hidden_dim in hidden_dims:
-            layers.append(spectral_norm(nn.Linear(prev_dim, hidden_dim)))
-            layers.append(act_fn())
-            prev_dim = hidden_dim
-        layers.append(spectral_norm(nn.Linear(prev_dim, output_dim)))
-        self.network = nn.Sequential(*layers)
-
-    def forward(self, x):
-        return self.network(x)
-
-
-class NormalizedResidualMLP(nn.Module):
-    def __init__(self, base_model, x_mean, x_std, y_mean, y_std):
-        super().__init__()
-        self.net = base_model
-        self.register_buffer('x_mean', torch.tensor(x_mean, dtype=torch.float32))
-        self.register_buffer('x_std',  torch.tensor(x_std,  dtype=torch.float32))
-        self.register_buffer('y_mean', torch.tensor(y_mean, dtype=torch.float32))
-        self.register_buffer('y_std',  torch.tensor(y_std,  dtype=torch.float32))
-
-    def forward(self, x):
-        x_norm = (x - self.x_mean) / self.x_std
-        y_norm = self.net(x_norm)
-        return y_norm * self.y_std + self.y_mean
-
-
-# ─── Data Loading ───────────────────────────────────────────────────────
-def load_csv_files(dataset_dir, max_files=None, rng=None, adapter="ecrl"):
-    """Load raw schema_version=2 CSVs from a single directory (as produced by
-    ecrl_data_collector_node.cpp), optionally subsampling files, and turn each
-    into (X, y) via residuals.py's shared target + the selected adapter
-    ("ecrl" or "ambient"). Every per-row residual definition lives in
-    residuals.py, not here -- this function only does file discovery/
-    subsampling and stacks the results.
-    """
-    csv_pattern = os.path.join(dataset_dir, "polynomial*.csv")
-    all_files = sorted(glob.glob(csv_pattern))
-    # Exclude the giant polynomial300 aggregated file if present
-    all_files = [f for f in all_files if "polynomial300" not in os.path.basename(f)]
-
-    if len(all_files) == 0:
-        raise FileNotFoundError(f"No polynomial CSV files in {dataset_dir}")
-
-    if max_files is not None and max_files < len(all_files):
-        if rng is None:
-            rng = np.random.default_rng(42)
-        chosen = rng.choice(len(all_files), max_files, replace=False)
-        all_files = [all_files[i] for i in sorted(chosen)]
-
-    print(f"  Loading {len(all_files)} files from {dataset_dir}")
-
-    input_list, target_list, source_tags = [], [], []
-
-    for f in tqdm(all_files, desc=f"  {os.path.basename(dataset_dir)}"):
-        try:
-            df = R.load_raw_csv(f)
-        except ValueError as e:
-            print(f"  SKIP {f}: {e}")
-            continue
-
-        if len(df) < 10:
-            continue
-
-        df = R.compute_targets(df)
-        if adapter == "ecrl":
-            X, Y = R.ecrl_features_and_target(df)
-        elif adapter == "ambient":
-            X = R.ambient_features(df)
-            Y = df[[f"d_{i}" for i in range(9)]].values
-        else:
-            raise ValueError(f"unknown adapter '{adapter}'")
-
-        valid = df["target_valid"].values & ~np.isnan(X).any(axis=1) & ~np.isnan(Y).any(axis=1)
-        if valid.sum() < 10:
-            continue
-
-        input_list.append(X[valid])
-        target_list.append(Y[valid])
-        source_tags.append(os.path.basename(f))
-
-    if not input_list:
-        raise ValueError(f"No valid data loaded from {dataset_dir}")
-
-    X = np.vstack(input_list)
-    y = np.vstack(target_list)
-    return X, y
-
-
-# ─── Diversity-Aware Sampling ───────────────────────────────────────────
-def filter_trivial_residuals(X, y, percentile=10):
-    """Remove samples whose residual magnitude is below the given percentile.
-
-    This drops near-zero residual rows (hovering / steady-state) that carry
-    little signal and would dilute the training set.
-    """
-    res_mag = np.linalg.norm(y, axis=1)
-    threshold = np.percentile(res_mag, percentile)
-    mask = res_mag > threshold
-    print(f"  Residual filter: keeping {mask.sum()}/{len(mask)} samples "
-          f"(threshold = {threshold:.2e})")
-    return X[mask], y[mask]
-
-
-def stratified_bin_sampling(X, y, n_target, key_dims, n_bins_per_dim=5, rng=None):
-    """Select ~n_target samples by stratified binning over key input dimensions.
-
-    We bin over a few high-information dimensions (position/velocity errors
-    and thrust for ecrl; body velocity/rate and thrust for ambient -- see
-    key_dims below) so that every region of the dynamics is represented,
-    rather than over-representing the most common operating point.
-
-    For generalization, this ensures the model has seen diverse states instead
-    of being dominated by whatever wind condition produced the most data.
-    """
-    if rng is None:
-        rng = np.random.default_rng(42)
-
-    N = len(X)
-    if N <= n_target:
-        print(f"  Stratified sampling: data ({N}) <= target ({n_target}), keeping all.")
-        return X, y
-
-    X_key = X[:, key_dims]
-
-    # Quantile-based bins to handle non-uniform distributions
-    bin_edges = []
-    for d in range(X_key.shape[1]):
-        edges = np.percentile(X_key[:, d],
-                              np.linspace(0, 100, n_bins_per_dim + 1))
-        # Make edges unique
-        edges = np.unique(edges)
-        bin_edges.append(edges)
-
-    # Assign each sample to a bin (tuple of per-dim indices)
-    bin_ids = np.zeros(N, dtype=int)
-    multiplier = 1
-    for d in range(len(key_dims)):
-        digit = np.digitize(X_key[:, d], bin_edges[d][1:-1])  # 0..n_bins-1
-        bin_ids += digit * multiplier
-        multiplier *= (len(bin_edges[d]) - 1) if len(bin_edges[d]) > 1 else 1
-
-    unique_bins = np.unique(bin_ids)
-    n_bins = len(unique_bins)
-    samples_per_bin = max(1, n_target // n_bins)
-
-    selected = []
-    for b in unique_bins:
-        members = np.where(bin_ids == b)[0]
-        k = min(len(members), samples_per_bin)
-        chosen = rng.choice(members, k, replace=False)
-        selected.append(chosen)
-
-    selected = np.concatenate(selected)
-
-    # If we're short, top up randomly from remaining
-    if len(selected) < n_target:
-        remaining = np.setdiff1d(np.arange(N), selected)
-        extra = rng.choice(remaining,
-                           min(n_target - len(selected), len(remaining)),
-                           replace=False)
-        selected = np.concatenate([selected, extra])
-
-    # If we're over, trim randomly
-    if len(selected) > n_target:
-        selected = rng.choice(selected, n_target, replace=False)
-
-    selected = np.sort(selected)
-    print(f"  Stratified sampling: {N} → {len(selected)} samples "
-          f"across {n_bins} bins")
-    return X[selected], y[selected]
-
-
-# ─── Main ───────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(
         description="Train ECRL residual with diversity-aware sample selection")
@@ -355,47 +170,16 @@ def main():
         n_bins_per_dim=args.n_bins, rng=rng)
 
     # ──────────────────────────────────────────────────────────────────
-    # 4. Normalize
+    # 4. Normalize + split (70/15/15)
     # ──────────────────────────────────────────────────────────────────
-    X_mean = np.mean(X_sel, axis=0)
-    X_std  = np.std(X_sel, axis=0)
-    X_std[X_std < 1e-8] = 1.0
-
-    y_mean = np.mean(y_sel, axis=0)
-    y_std  = np.std(y_sel, axis=0)
-    y_std[y_std < 1e-8] = 1.0
-
-    X_norm = (X_sel - X_mean) / X_std
-    y_norm = (y_sel - y_mean) / y_std
+    X_norm, y_norm, X_mean, X_std, y_mean, y_std = normalize(X_sel, y_sel)
+    train_ds, val_ds, test_ds, tr_idx, val_idx, te_idx = split_train_val_test(
+        X_norm, y_norm, train_frac=0.70, val_frac=0.15, rng=rng)
 
     # ──────────────────────────────────────────────────────────────────
-    # 5. Train / Val / Test split  (70 / 15 / 15)
+    # 5. Build + train model
     # ──────────────────────────────────────────────────────────────────
-    num = len(X_norm)
-    idx = np.arange(num)
-    rng.shuffle(idx)
-
-    tr_end  = int(0.70 * num)
-    val_end = int(0.85 * num)
-
-    tr_idx  = idx[:tr_end]
-    val_idx = idx[tr_end:val_end]
-    te_idx  = idx[val_end:]
-
-    print(f"\n  Train: {len(tr_idx)}  Val: {len(val_idx)}  Test: {len(te_idx)}")
-
-    train_ds = ResidualDataset(X_norm[tr_idx], y_norm[tr_idx])
-    val_ds   = ResidualDataset(X_norm[val_idx], y_norm[val_idx])
-    test_ds  = ResidualDataset(X_norm[te_idx], y_norm[te_idx])
-
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
-    val_loader   = DataLoader(val_ds,   batch_size=args.batch_size, shuffle=False)
-    test_loader  = DataLoader(test_ds,  batch_size=args.batch_size, shuffle=False)
-
-    # ──────────────────────────────────────────────────────────────────
-    # 6. Build model
-    # ──────────────────────────────────────────────────────────────────
-    input_dim  = X_sel.shape[1]
+    input_dim = X_sel.shape[1]
     output_dim = y_sel.shape[1]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -406,215 +190,36 @@ def main():
                         hidden_dims=args.hidden_dims,
                         activation=args.activation).to(device)
 
-    optimizer = optim.AdamW(model.parameters(),
-                            lr=args.lr, weight_decay=args.weight_decay)
-    criterion = nn.MSELoss()
-
-    # OneCycleLR for controlled learning rate schedule
-    scheduler = optim.lr_scheduler.OneCycleLR(
-        optimizer, max_lr=args.lr,
-        steps_per_epoch=len(train_loader),
-        epochs=args.epochs,
-        pct_start=0.15)
-
-    # ──────────────────────────────────────────────────────────────────
-    # 7. Training loop with early stopping
-    # ──────────────────────────────────────────────────────────────────
     print("\n" + "="*60)
-    print("STEP 7: Training")
+    print("STEP 5: Training")
     print("="*60)
 
-    best_val = float("inf")
-    wait = 0
-    train_losses, val_losses = [], []
-
-    for epoch in range(1, args.epochs + 1):
-        # ── Train ──
-        model.train()
-        epoch_loss = 0.0
-        for bx, by in train_loader:
-            bx, by = bx.to(device), by.to(device)
-            optimizer.zero_grad()
-            pred = model(bx)
-            loss = criterion(pred, by)
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
-            scheduler.step()
-            epoch_loss += loss.item() * len(bx)
-        epoch_loss /= len(tr_idx)
-        train_losses.append(epoch_loss)
-
-        # ── Validate ──
-        model.eval()
-        vloss = 0.0
-        with torch.no_grad():
-            for bx, by in val_loader:
-                bx, by = bx.to(device), by.to(device)
-                vloss += criterion(model(bx), by).item() * len(bx)
-        vloss /= len(val_idx)
-        val_losses.append(vloss)
-
-        if epoch % 5 == 0 or epoch == 1:
-            print(f"  Epoch {epoch:3d}/{args.epochs}  "
-                  f"Train: {epoch_loss:.6f}  Val: {vloss:.6f}")
-
-        # ── Early stopping ──
-        if vloss < best_val:
-            best_val = vloss
-            wait = 0
-            torch.save(model.state_dict(),
-                       os.path.join(args.output_dir, f"{args.adapter}_best_model.pt"))
-        else:
-            wait += 1
-            if wait >= args.patience:
-                print(f"\n  Early stopping at epoch {epoch} "
-                      f"(best val = {best_val:.6f})")
-                break
-
-    print(f"\n  Training finished. Best Val Loss: {best_val:.6f}")
+    train_losses, val_losses, best_val, best_model_path = train_model(
+        model, train_ds, val_ds, device, args.output_dir, args.adapter,
+        epochs=args.epochs, batch_size=args.batch_size, lr=args.lr,
+        weight_decay=args.weight_decay, patience=args.patience)
 
     # ──────────────────────────────────────────────────────────────────
-    # 8. Evaluate on test set
+    # 6. Evaluate on test set (reload best checkpoint -- last epoch isn't
+    #    necessarily the best one)
     # ──────────────────────────────────────────────────────────────────
-    model.load_state_dict(
-        torch.load(os.path.join(args.output_dir, f"{args.adapter}_best_model.pt"),
-                   weights_only=True))
-    model.eval()
-
-    all_preds, all_tgts = [], []
-    with torch.no_grad():
-        for bx, by in test_loader:
-            bx = bx.to(device)
-            all_preds.append(model(bx).cpu().numpy())
-            all_tgts.append(by.numpy())
-
-    preds = np.vstack(all_preds)
-    tgts  = np.vstack(all_tgts)
-
-    # De-normalise
-    preds_phys = preds * y_std + y_mean
-    tgts_phys  = tgts  * y_std + y_mean
-
-    coord_rmse = np.sqrt(np.mean((preds_phys - tgts_phys)**2, axis=0))
-    coord_names = [
-        "Position X (res_0)", "Position Y (res_1)", "Position Z (res_2)",
-        "Velocity X (res_3)", "Velocity Y (res_4)", "Velocity Z (res_5)",
-        "Attitude X (res_6)", "Attitude Y (res_7)", "Attitude Z (res_8)",
-    ]
-
-    print("\n" + "="*60)
-    print("TEST SET RMSE (Physical Coordinates)")
-    print("="*60)
-    for name, rmse in zip(coord_names, coord_rmse):
-        print(f"  {name:28s}: {rmse:.6f}")
-
-    pos_rmse_3d = np.sqrt(np.mean(coord_rmse[:3]**2))
-    print(f"\n  3D Position RMSE: {pos_rmse_3d:.6f} m")
+    model.load_state_dict(torch.load(best_model_path, weights_only=True))
+    coord_rmse = evaluate_test_set(model, test_ds, device, y_mean, y_std,
+                                    batch_size=args.batch_size)
 
     # ──────────────────────────────────────────────────────────────────
-    # 9. Save metadata
+    # 7. Save metadata, export models, plot training curves
     # ──────────────────────────────────────────────────────────────────
-    metadata = {
-        "input_dim": int(input_dim),
-        "output_dim": int(output_dim),
-        "input_mean": X_mean.tolist(),
-        "input_std": X_std.tolist(),
-        "output_mean": y_mean.tolist(),
-        "output_std": y_std.tolist(),
-        "coordinate_names": coord_names,
-        "test_rmse": coord_rmse.tolist(),
-        "adapter": args.adapter,
-        "residual_definition": "d_k_v3",  # see docs/residual_conventions.md; output is world-frame d_k
-                                           # directly (the ecrl adapter's earlier R_ref_k-reanchored
-                                           # attitude target was dropped -- it made tracking error
-                                           # dominate d_k). ambient regresses onto the identical target.
-        "training_info": {
-            "strategy": "diversity-aware: mixed calm+windy, residual filtering, stratified spatial binning",
-            "calm_files_used": args.calm_files,
-            "windy_files_used": args.windy_files,
-            "target_samples": args.target_samples,
-            "actual_train_samples": int(len(tr_idx)),
-            "residual_filter_percentile": args.residual_filter_pct,
-            "hidden_dims": args.hidden_dims,
-            "weight_decay": args.weight_decay,
-            "best_val_loss": float(best_val),
-        }
-    }
+    save_metadata(args.output_dir, args.adapter, input_dim, output_dim,
+                  X_mean, X_std, y_mean, y_std, coord_rmse, best_val,
+                  args.calm_files, args.windy_files, args.target_samples,
+                  len(tr_idx), args.residual_filter_pct, args.hidden_dims,
+                  args.weight_decay)
 
-    meta_path = os.path.join(args.output_dir, f"{args.adapter}_metadata.json")
-    with open(meta_path, "w") as f:
-        json.dump(metadata, f, indent=4)
-    print(f"\n  Saved metadata → {meta_path}")
+    export_models(model, args.output_dir, args.adapter, input_dim,
+                 X_mean, X_std, y_mean, y_std)
 
-    # ──────────────────────────────────────────────────────────────────
-    # 10. Export models (remove spectral norm hooks first)
-    # ──────────────────────────────────────────────────────────────────
-    model.cpu()
-    _ = model(torch.zeros(1, input_dim))   # prime spectral norm buffers
-    for m in model.modules():
-        if isinstance(m, nn.Linear):
-            try:
-                remove_spectral_norm(m)
-            except ValueError:
-                pass
-
-    norm_model = NormalizedResidualMLP(model, X_mean, X_std, y_mean, y_std)
-    dummy = torch.randn(1, input_dim)
-
-    # ONNX – unnormalised
-    try:
-        onnx_path = os.path.join(args.output_dir, f"{args.adapter}_model.onnx")
-        torch.onnx.export(model, dummy, onnx_path,
-                          export_params=True, opset_version=11,
-                          do_constant_folding=True,
-                          input_names=["input"], output_names=["output"])
-        print(f"  ONNX (unnorm)  → {onnx_path}")
-    except Exception as e:
-        print(f"  ONNX export failed: {e}")
-
-    # ONNX – normalised
-    try:
-        onnx_norm = os.path.join(args.output_dir, f"{args.adapter}_model_normalized.onnx")
-        torch.onnx.export(norm_model, dummy, onnx_norm,
-                          export_params=True, opset_version=11,
-                          do_constant_folding=True,
-                          input_names=["input"], output_names=["output"])
-        print(f"  ONNX (norm)    → {onnx_norm}")
-    except Exception as e:
-        print(f"  ONNX norm export failed: {e}")
-
-    # TorchScript – unnormalised
-    try:
-        ts_path = os.path.join(args.output_dir, f"{args.adapter}_model.pt")
-        torch.jit.script(model).save(ts_path)
-        print(f"  TorchScript    → {ts_path}")
-    except Exception as e:
-        print(f"  TorchScript export failed: {e}")
-
-    # TorchScript – normalised
-    try:
-        ts_norm = os.path.join(args.output_dir, f"{args.adapter}_model_normalized.pt")
-        torch.jit.script(norm_model).save(ts_norm)
-        print(f"  TorchScript (norm) → {ts_norm}")
-    except Exception as e:
-        print(f"  TorchScript norm export failed: {e}")
-
-    # ──────────────────────────────────────────────────────────────────
-    # 11. Training curves plot
-    # ──────────────────────────────────────────────────────────────────
-    plt.figure(figsize=(10, 5))
-    plt.plot(train_losses, label="Train Loss")
-    plt.plot(val_losses, label="Val Loss")
-    plt.xlabel("Epoch")
-    plt.ylabel("MSE Loss (Normalised)")
-    plt.title("Diversity-Aware Residual Training Curves")
-    plt.legend()
-    plt.grid(True)
-    plot_path = os.path.join(args.output_dir, f"{args.adapter}_training_curves.png")
-    plt.savefig(plot_path, dpi=150)
-    plt.close()
-    print(f"  Training curves → {plot_path}")
+    plot_training_curves(train_losses, val_losses, args.output_dir, args.adapter)
 
     print("\n" + "="*60)
     print("DONE — model ready for deployment")

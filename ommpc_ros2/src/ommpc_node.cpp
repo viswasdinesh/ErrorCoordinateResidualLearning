@@ -44,6 +44,17 @@ private:
   FsmState fsm_state_ = WAIT_OFFBOARD;
   std::string trajectory_type_ = "hover";
 
+  // Period (s) of the built-in analytic figure8/circle references
+  // (getFigure8Reference/getCircleReference). Was hardcoded to 20.0
+  // (M_PI/10.0 rad/s) in both -- now a runtime param so agile (short-
+  // period, higher-velocity/acceleration) trajectories can be flown
+  // without a rebuild. collect_figure8_windy.py's --period_s previously
+  // only affected the *script's* recording-duration math and never reached
+  // the node, so shortening it silently kept flying the same 20s-period
+  // maneuver for longer/shorter wall-clock time -- this is what actually
+  // wires it through.
+  double figure8_period_s_ = 20.0;
+
   Odom_Data_t odom_data_;
   Imu_Data_t imu_data_;
   px4_msgs::msg::VehicleStatus vehicle_status_;
@@ -188,6 +199,15 @@ private:
     msg.fsm_state = static_cast<uint8_t>(fsm_state_);
     msg.osqp_status = static_cast<int32_t>(osqp_status);
 
+    msg.trim_norm = ommpc_controller_.last_trim_norm;
+    msg.ecrl_norm = ommpc_controller_.last_ecrl_norm;
+    msg.correction_clipped = ommpc_controller_.last_correction_clipped;
+
+    msg.trim_time_us = ommpc_controller_.last_trim_time_us;
+    msg.ecrl_time_us = ommpc_controller_.last_ecrl_time_us;
+    msg.qp_solve_time_us = ommpc_controller_.last_qp_solve_time_us;
+    msg.total_time_us = ommpc_controller_.last_total_time_us;
+
     reference_pub_->publish(msg);
   }
 
@@ -199,7 +219,7 @@ private:
   void getFigure8Reference(double t_since_start, std::vector<Eigen::Vector3d>& ref_p,
                            std::vector<Eigen::Vector3d>& ref_v, std::vector<double>& ref_yaw)
   {
-    double omega = M_PI / 10.0;  // Period of 20 seconds
+    double omega = 2.0 * M_PI / figure8_period_s_;
     double A = 1.5;
     double B = 1.5;
     double z_val = param_.takeoff_height;
@@ -222,7 +242,7 @@ private:
   void getCircleReference(double t_since_start, std::vector<Eigen::Vector3d>& ref_p,
                           std::vector<Eigen::Vector3d>& ref_v, std::vector<double>& ref_yaw)
   {
-    double omega = M_PI / 10.0;  // Period of 20 seconds
+    double omega = 2.0 * M_PI / figure8_period_s_;
     double R = 1.5;
     double z_val = param_.takeoff_height;
 
@@ -570,6 +590,13 @@ public:
     this->declare_parameter("use_fix_yaw", false);
     this->declare_parameter("use_trajectory_ending_pos", true);
 
+    this->declare_parameter("figure8_period_s", 20.0);
+    this->declare_parameter("enable_residual_correction", false);
+    this->declare_parameter("enable_ambient_correction", false);
+    this->declare_parameter("residual_clip_norm", 0.08);
+    this->declare_parameter("enable_integral_trim", false);
+    this->declare_parameter("integral_trim_tau", 10.0);
+
     param_.takeoff_height = this->get_parameter("takeoff_height").as_double();
     param_.takeoff_land_speed = this->get_parameter("takeoff_land_speed").as_double();
     trajectory_type_ = this->get_parameter("trajectory").as_string();
@@ -594,8 +621,42 @@ public:
     param_.input_cost_exponential = this->get_parameter("MPC_params.input_cost_exponential").as_double();
     param_.step_T = this->get_parameter("MPC_params.step_T").as_double();
 
+    figure8_period_s_ = this->get_parameter("figure8_period_s").as_double();
+    if (figure8_period_s_ != 20.0)
+    {
+      RCLCPP_WARN(this->get_logger(), "figure8_period_s=%.2f (default 20.0): flying a non-default-speed "
+                  "figure8/circle reference", figure8_period_s_);
+    }
+
     param_.use_fix_yaw = this->get_parameter("use_fix_yaw").as_bool();
     param_.use_trajectory_ending_pos = this->get_parameter("use_trajectory_ending_pos").as_bool();
+
+    param_.enable_residual_correction = this->get_parameter("enable_residual_correction").as_bool();
+    param_.enable_ambient_correction = this->get_parameter("enable_ambient_correction").as_bool();
+    param_.residual_clip_norm = this->get_parameter("residual_clip_norm").as_double();
+    if (param_.enable_residual_correction)
+    {
+      RCLCPP_WARN(this->get_logger(),
+                  "enable_residual_correction=true: live ecrl residual correction is ACTIVE "
+                  "(residual_clip_norm=%.4f)", param_.residual_clip_norm);
+    }
+    if (param_.enable_ambient_correction)
+    {
+      RCLCPP_WARN(this->get_logger(),
+                  "enable_ambient_correction=true: live ambient residual correction is ACTIVE "
+                  "(residual_clip_norm=%.4f)%s", param_.residual_clip_norm,
+                  param_.enable_residual_correction ? " -- enable_residual_correction is ALSO set; "
+                                                       "ecrl takes priority, ambient will not run" : "");
+    }
+
+    param_.enable_integral_trim = this->get_parameter("enable_integral_trim").as_bool();
+    param_.integral_trim_tau = this->get_parameter("integral_trim_tau").as_double();
+    if (param_.enable_integral_trim)
+    {
+      RCLCPP_WARN(this->get_logger(),
+                  "enable_integral_trim=true: live disturbance-observer trim is ACTIVE "
+                  "(integral_trim_tau=%.2f)", param_.integral_trim_tau);
+    }
 
     thr2acc_ = 9.81 / param_.hover_percent;
 
