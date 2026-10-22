@@ -229,13 +229,6 @@ RMSE), `save_metadata()`, `export_models()` (removes spectral-norm hooks,
 exports ONNX + TorchScript, raw and self-normalizing), and
 `plot_training_curves()`.
 
-### `train_residuals.py`
-Earlier/superseded version of the trainer (pre-`residuals.py` refactor,
-reads baked-in `dx_*`/`du_*`/`res_*`/`r_ref_*` columns directly from CSVs
-rather than computing them from raw logs). Kept for history; **not** the
-one to use — use `train_residuals_v2.py` (or `knode_training/train_knode.py`
-for rollout training).
-
 ### `evaluate_model.py`
 Scores a trained normalized model against a **directory** of held-out
 `polynomial*.csv` files, vs. a zero-residual baseline, printing per-axis and

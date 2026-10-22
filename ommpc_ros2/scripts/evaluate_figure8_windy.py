@@ -19,7 +19,7 @@ ambient_features verbatim -- no residual math is reimplemented here.
 
 Usage:
     conda run -n ecrl python3 scripts/evaluate_figure8_windy.py \\
-        --csv /home/dinesh/ecrl_datasets_v2_eval_windy/figure8/figure8_windy_run1.csv \\
+        --csv ~/ecrl_datasets_v2_eval_windy/figure8/figure8_windy_run1.csv \\
         --ecrl_model models/ecrl_model_normalized.pt \\
         --ambient_model models/ambient_model_normalized.pt
 """

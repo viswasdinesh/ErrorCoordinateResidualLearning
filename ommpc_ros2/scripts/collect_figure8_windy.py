@@ -64,7 +64,7 @@ script's design:
 
 Usage:
     python3 scripts/collect_figure8_windy.py \\
-        --csv_path /home/dinesh/ecrl_datasets_v2_eval_windy/figure8/figure8_windy_run1.csv \\
+        --csv_path ~/ecrl_datasets_v2_eval_windy/figure8/figure8_windy_run1.csv \\
         --wind_x 1.3 --wind_y 0.7 --periods 6
 """
 import argparse
@@ -274,10 +274,10 @@ def gust_loop(stop_event: threading.Event, wind_topic: str, base_x: float, base_
 # ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--csv_path", default="/home/dinesh/ecrl_datasets_v2_eval_windy/figure8/figure8_windy_run1.csv",
+    ap.add_argument("--csv_path", default=os.path.expanduser("~/ecrl_datasets_v2_eval_windy/figure8/figure8_windy_run1.csv"),
                      help="Fresh output path for ecrl_data_collector_node's schema_version=2 raw CSV")
-    ap.add_argument("--px4_dir", default="/home/dinesh/PX4-Autopilot")
-    ap.add_argument("--ws_dir", default="/home/dinesh/ecrl_ws")
+    ap.add_argument("--px4_dir", default=os.path.expanduser("~/PX4-Autopilot"))
+    ap.add_argument("--ws_dir", default=os.path.expanduser("~/ecrl_ws"))
     ap.add_argument("--world", default="ecrl_windy_eval")
     ap.add_argument("--wind_x", type=float, default=1.3,
                      help="Wind linear_velocity.x, m/s. Default direction (1.3, 0.7) is deliberately "

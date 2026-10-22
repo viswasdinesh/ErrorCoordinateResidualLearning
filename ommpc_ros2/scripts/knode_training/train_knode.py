@@ -51,6 +51,7 @@ import residuals as R  # noqa: E402
 import so3_torch as T  # noqa: E402
 from windows import build_rollout_windows, RolloutWindowDataset  # noqa: E402
 from train_residuals_v2 import ResidualMLP, NormalizedResidualMLP, load_csv_files  # noqa: E402
+from residual_model import lipschitz_penalty, spectral_norm_product  # noqa: E402
 
 
 # ─── Data loading (windows) ────────────────────────────────────────────
@@ -189,10 +190,10 @@ def rollout_loss(model, batch, adapter, x_mean, x_std, y_mean, y_std, loss_weigh
 def main():
     parser = argparse.ArgumentParser(description="KNODE-MPC-style multi-step rollout training for the ECRL residual")
 
-    parser.add_argument("--calm_dir", type=str, default="/home/dinesh/ecrl_datasets_v2")
-    parser.add_argument("--windy_dir", type=str, default="/home/dinesh/ecrl_datasets_v2/windy")
+    parser.add_argument("--calm_dir", type=str, default=os.path.expanduser("~/ecrl_datasets_v2"))
+    parser.add_argument("--windy_dir", type=str, default=os.path.expanduser("~/ecrl_datasets_v2/windy"))
     parser.add_argument("--output_dir", type=str,
-                         default="/home/dinesh/ecrl_ws/src/ommpc_ros2/scripts/knode_training/output",
+                         default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "output"),
                          help="Scratch output directory -- NOT ommpc_ros2/models/. Promoting a resulting "
                               "model into production is a separate, later decision.")
     parser.add_argument("--adapter", type=str, default="ecrl", choices=["ecrl", "ambient"])
@@ -220,6 +221,12 @@ def main():
     parser.add_argument("--patience", type=int, default=12)
     parser.add_argument("--hidden_dims", type=int, nargs="+", default=[128, 128])
     parser.add_argument("--activation", type=str, default="tanh", choices=["relu", "tanh", "elu"])
+    parser.add_argument("--lipschitz_lambda", type=float, default=0.0,
+                         help="Weight of the prod_i ||W_i||_2 Lipschitz penalty (0 = off). When > 0 "
+                              "the model is built WITHOUT spectral_norm (it would make the penalty a no-op).")
+    parser.add_argument("--lipschitz_max", type=float, default=None,
+                         help="If set, penalize only max(0, prod - lipschitz_max)^2 (hinge); "
+                              "otherwise penalize prod^2.")
     parser.add_argument("--seed", type=int, default=42)
 
     args = parser.parse_args()
@@ -273,7 +280,8 @@ def main():
     print(f"  MLP {[input_dim] + args.hidden_dims + [output_dim]}, rollout_steps={args.rollout_steps}, "
           f"one_step_weight={args.one_step_weight}")
     model = ResidualMLP(input_dim=input_dim, output_dim=output_dim,
-                         hidden_dims=args.hidden_dims, activation=args.activation).to(device)
+                         hidden_dims=args.hidden_dims, activation=args.activation,
+                         use_spectral_norm=(args.lipschitz_lambda == 0.0)).to(device)
 
     loss_weights = torch.tensor(args.loss_weights if args.loss_weights else [1.0] * 9,
                                  dtype=torch.float32, device=device)
@@ -301,7 +309,8 @@ def main():
             optimizer.zero_grad()
             loss = rollout_loss(model, batch, args.adapter, x_mean, x_std, y_mean, y_std,
                                  loss_weights, args.one_step_weight, args.rollout_steps)
-            loss.backward()
+            penalty, _ = lipschitz_penalty(model, args.lipschitz_lambda, args.lipschitz_max)
+            (loss + penalty).backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
             scheduler.step()
@@ -324,7 +333,10 @@ def main():
         val_losses.append(vloss)
 
         if epoch % 5 == 0 or epoch == 1:
-            print(f"  Epoch {epoch:3d}/{args.epochs}  Train: {epoch_loss:.6f}  Val (pure rollout): {vloss:.6f}")
+            with torch.no_grad():
+                lip = spectral_norm_product(model).item()
+            print(f"  Epoch {epoch:3d}/{args.epochs}  Train: {epoch_loss:.6f}  Val (pure rollout): {vloss:.6f}  "
+                  f"prod||W||_2: {lip:.3f}")
 
         if vloss < best_val:
             best_val = vloss
@@ -378,6 +390,8 @@ def main():
             "windy_files_used": args.windy_files,
             "hidden_dims": args.hidden_dims,
             "weight_decay": args.weight_decay,
+            "lipschitz_lambda": args.lipschitz_lambda,
+            "lipschitz_max": args.lipschitz_max,
             "best_val_loss": float(best_val),
             "knode": {
                 "rollout_steps": args.rollout_steps,

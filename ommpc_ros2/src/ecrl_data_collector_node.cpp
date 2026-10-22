@@ -14,6 +14,7 @@
 #include <Eigen/Dense>
 
 #include <chrono>
+#include <cstdlib>
 #include <fstream>
 #include <string>
 #include <sys/stat.h>
@@ -306,11 +307,12 @@ public:
   EcrlDataCollectorNode() : Node("ecrl_data_collector_node")
   {
     // ecrl_datasets_v2: schema_version=2 raw logs. Kept in a separate directory
-    // from the old /home/dinesh/ecrl_datasets (schema_version=1, baked-in
+    // from the old ~/ecrl_datasets (schema_version=1, baked-in
     // linearized residuals) so the two formats can never be mixed by accident
     // -- residuals.py::load_raw_csv() would reject the old files anyway, but
     // a distinct directory means you never have to remember that.
-    this->declare_parameter("csv_filepath", "/home/dinesh/ecrl_datasets_v2/figure_8.csv");
+    const char *home = std::getenv("HOME");
+    this->declare_parameter("csv_filepath", std::string(home ? home : ".") + "/ecrl_datasets_v2/figure_8.csv");
     csv_filepath_ = this->get_parameter("csv_filepath").as_string();
 
     size_t last_slash = csv_filepath_.find_last_of('/');

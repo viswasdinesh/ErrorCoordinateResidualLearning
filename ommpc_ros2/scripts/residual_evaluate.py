@@ -59,7 +59,8 @@ def evaluate_test_set(model, test_ds, device, y_mean, y_std, batch_size=128):
 
 def save_metadata(output_dir, adapter, input_dim, output_dim, X_mean, X_std, y_mean, y_std,
                    coord_rmse, best_val, calm_files, windy_files, target_samples,
-                   actual_train_samples, residual_filter_pct, hidden_dims, weight_decay):
+                   actual_train_samples, residual_filter_pct, hidden_dims, weight_decay,
+                   loss_weights=None, lipschitz_lambda=0.0, lipschitz_max=None):
     metadata = {
         "input_dim": int(input_dim),
         "output_dim": int(output_dim),
@@ -83,6 +84,9 @@ def save_metadata(output_dir, adapter, input_dim, output_dim, X_mean, X_std, y_m
             "residual_filter_percentile": residual_filter_pct,
             "hidden_dims": hidden_dims,
             "weight_decay": weight_decay,
+            "loss_weights": loss_weights if loss_weights else [1.0] * int(output_dim),
+            "lipschitz_lambda": lipschitz_lambda,
+            "lipschitz_max": lipschitz_max,
             "best_val_loss": float(best_val),
         }
     }

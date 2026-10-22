@@ -74,7 +74,7 @@ def rollout_stepwise_norms(model, batch, adapter, rollout_steps, zero_correction
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--csv_path", default="/home/dinesh/ecrl_datasets_v2_eval_windy/figure8/figure8_windy_run1.csv",
+    parser.add_argument("--csv_path", default=os.path.expanduser("~/ecrl_datasets_v2_eval_windy/figure8/figure8_windy_run1.csv"),
                          help="Held-out schema_version=2 CSV to evaluate on. Default: this session's "
                               "figure-8-in-wind SITL flight, never seen by any training pool.")
     parser.add_argument("--adapter", default="ecrl", choices=["ecrl", "ambient"])

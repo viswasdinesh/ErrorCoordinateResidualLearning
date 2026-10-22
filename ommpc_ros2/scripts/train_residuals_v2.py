@@ -68,13 +68,13 @@ def main():
         description="Train ECRL residual with diversity-aware sample selection")
 
     parser.add_argument("--calm_dir", type=str,
-                        default="/home/dinesh/ecrl_datasets_v2",
+                        default=os.path.expanduser("~/ecrl_datasets_v2"),
                         help="Non-windy (calm) dataset directory (raw schema_version=2 CSVs)")
     parser.add_argument("--windy_dir", type=str,
-                        default="/home/dinesh/ecrl_datasets_v2/windy",
+                        default=os.path.expanduser("~/ecrl_datasets_v2/windy"),
                         help="Windy dataset directory (raw schema_version=2 CSVs)")
     parser.add_argument("--output_dir", type=str,
-                        default="/home/dinesh/ecrl_ws/src/ommpc_ros2/models",
+                        default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "models"),
                         help="Directory to save output models")
     parser.add_argument("--adapter", type=str, default="ecrl", choices=["ecrl", "ambient"],
                         help="Feature adapter: 'ecrl' (error-state, reference-relative) or "
@@ -109,6 +109,16 @@ def main():
                         help="Hidden layer dimensions (smaller = less overfit)")
     parser.add_argument("--activation", type=str, default="tanh",
                         choices=["relu", "tanh", "elu"])
+    parser.add_argument("--lipschitz_lambda", type=float, default=0.0,
+                        help="Weight of the prod_i ||W_i||_2 Lipschitz penalty (0 = off). When > 0 "
+                             "the model is built WITHOUT spectral_norm (it would make the penalty a no-op).")
+    parser.add_argument("--lipschitz_max", type=float, default=None,
+                        help="If set, penalize only max(0, prod - lipschitz_max)^2 (hinge); "
+                             "otherwise penalize prod^2.")
+    parser.add_argument("--loss_weights", type=float, nargs=9, default=None,
+                        help="Per-output (p_x,p_y,p_z,v_x,v_y,v_z,th_x,th_y,th_z) weights on the "
+                             "normalized squared error, e.g. 0.1 0.1 0.1 1 1 1 1 1 1 to down-weight "
+                             "the noise-floor position residual. Default: uniform (plain MSE).")
     parser.add_argument("--seed", type=int, default=42)
 
     args = parser.parse_args()
@@ -188,7 +198,8 @@ def main():
 
     model = ResidualMLP(input_dim=input_dim, output_dim=output_dim,
                         hidden_dims=args.hidden_dims,
-                        activation=args.activation).to(device)
+                        activation=args.activation,
+                        use_spectral_norm=(args.lipschitz_lambda == 0.0)).to(device)
 
     print("\n" + "="*60)
     print("STEP 5: Training")
@@ -197,7 +208,9 @@ def main():
     train_losses, val_losses, best_val, best_model_path = train_model(
         model, train_ds, val_ds, device, args.output_dir, args.adapter,
         epochs=args.epochs, batch_size=args.batch_size, lr=args.lr,
-        weight_decay=args.weight_decay, patience=args.patience)
+        weight_decay=args.weight_decay, patience=args.patience,
+        lipschitz_lambda=args.lipschitz_lambda, lipschitz_max=args.lipschitz_max,
+        loss_weights=args.loss_weights)
 
     # ──────────────────────────────────────────────────────────────────
     # 6. Evaluate on test set (reload best checkpoint -- last epoch isn't
@@ -214,7 +227,8 @@ def main():
                   X_mean, X_std, y_mean, y_std, coord_rmse, best_val,
                   args.calm_files, args.windy_files, args.target_samples,
                   len(tr_idx), args.residual_filter_pct, args.hidden_dims,
-                  args.weight_decay)
+                  args.weight_decay, loss_weights=args.loss_weights,
+                  lipschitz_lambda=args.lipschitz_lambda, lipschitz_max=args.lipschitz_max)
 
     export_models(model, args.output_dir, args.adapter, input_dim,
                  X_mean, X_std, y_mean, y_std)

@@ -1,0 +1,10 @@
+# Offline residual-learning pipeline (scripts/ and scripts/knode_training/).
+# Tested with Python 3.10 and the versions below.
+torch>=2.4
+numpy>=1.26
+pandas>=2.0
+matplotlib>=3.8
+tqdm>=4.66
+# Optional: ONNX export in residual_evaluate.py (TorchScript export works without these)
+# onnx
+# onnxscript

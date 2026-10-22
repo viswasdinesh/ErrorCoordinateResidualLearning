@@ -40,8 +40,8 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from train_residuals_v2 import load_csv_files, ResidualMLP  # noqa: E402
 
-CALM_DIR = "/home/dinesh/ecrl_datasets_v2"
-WINDY_DIR = "/home/dinesh/ecrl_datasets_v2/windy"
+CALM_DIR = os.path.expanduser("~/ecrl_datasets_v2")
+WINDY_DIR = os.path.expanduser("~/ecrl_datasets_v2/windy")
 N_SWEEP = [100, 250, 500, 1000, 2500, 5000, 10000, 20000, 30000, 40000, 50000]
 NUM_TRIALS = 5
 # 9-D output block structure (residuals.py::compute_targets' d_0..d_8 order).
