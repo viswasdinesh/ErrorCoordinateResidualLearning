@@ -11,7 +11,7 @@ verbatim for the residual panels -- no residual math is reimplemented here.
 
 Usage:
     conda run -n ecrl python3 scripts/plot_figure8_windy.py \\
-        --csv /home/dinesh/ecrl_datasets_v2_eval_windy/figure8/figure8_windy_run1.csv
+        --csv ~/ecrl_datasets_v2_eval_windy/figure8/figure8_windy_run1.csv
 """
 import argparse
 import os

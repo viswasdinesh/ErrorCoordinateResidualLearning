@@ -14,13 +14,14 @@
 #include <Eigen/Dense>
 
 #include <chrono>
+#include <cstdlib>
 #include <fstream>
 #include <string>
 #include <sys/stat.h>
 
 namespace
 {
-constexpr int kSchemaVersion = 2;
+constexpr int kSchemaVersion = 4;
 
 int64_t steadyNowNs()
 {
@@ -72,6 +73,13 @@ private:
 
   uint8_t prev_fsm_state_ = 0;
   int32_t prev_osqp_status_ = -1;
+  double prev_trim_norm_ = 0.0;
+  double prev_ecrl_norm_ = 0.0;
+  bool prev_correction_clipped_ = false;
+  double prev_trim_time_us_ = 0.0;
+  double prev_ecrl_time_us_ = 0.0;
+  double prev_qp_solve_time_us_ = 0.0;
+  double prev_total_time_us_ = 0.0;
 
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr callback_handle_;
 
@@ -173,6 +181,13 @@ private:
     double curr_thr2acc = latest_ref_->thr2acc;
     uint8_t curr_fsm_state = latest_ref_->fsm_state;
     int32_t curr_osqp_status = latest_ref_->osqp_status;
+    double curr_trim_norm = latest_ref_->trim_norm;
+    double curr_ecrl_norm = latest_ref_->ecrl_norm;
+    bool curr_correction_clipped = latest_ref_->correction_clipped;
+    double curr_trim_time_us = latest_ref_->trim_time_us;
+    double curr_ecrl_time_us = latest_ref_->ecrl_time_us;
+    double curr_qp_solve_time_us = latest_ref_->qp_solve_time_us;
+    double curr_total_time_us = latest_ref_->total_time_us;
 
     // 3. Applied control, FRD -> FLU (thrust_body[2] is negative-up, normalized [0,1]).
     double curr_thrust_norm_cmd = -latest_setpoint_->thrust_body[2];
@@ -193,7 +208,9 @@ private:
         logRow(prev_mono_ns_, curr_mono_ns, prev_odom_us_, msg->timestamp, prev_p_meas_, prev_v_meas_, prev_q_meas_,
                prev_w_meas_, curr_p_meas, curr_v_meas, curr_q_meas, prev_thracc_cmd_, prev_w_cmd_,
                prev_thrust_norm_cmd_, prev_thr2acc_, prev_p_ref_, prev_v_ref_, prev_q_ref_, prev_thracc_ref_,
-               prev_w_ref_, prev_fsm_state_, prev_osqp_status_);
+               prev_w_ref_, prev_fsm_state_, prev_osqp_status_, prev_trim_norm_, prev_ecrl_norm_,
+               prev_correction_clipped_, prev_trim_time_us_, prev_ecrl_time_us_, prev_qp_solve_time_us_,
+               prev_total_time_us_);
       }
     }
 
@@ -217,6 +234,13 @@ private:
 
     prev_fsm_state_ = curr_fsm_state;
     prev_osqp_status_ = curr_osqp_status;
+    prev_trim_norm_ = curr_trim_norm;
+    prev_ecrl_norm_ = curr_ecrl_norm;
+    prev_correction_clipped_ = curr_correction_clipped;
+    prev_trim_time_us_ = curr_trim_time_us;
+    prev_ecrl_time_us_ = curr_ecrl_time_us;
+    prev_qp_solve_time_us_ = curr_qp_solve_time_us;
+    prev_total_time_us_ = curr_total_time_us;
     has_prev_ = true;
   }
 
@@ -235,7 +259,9 @@ private:
               const Eigen::Quaterniond &q_kp1, double thracc_cmd_k, const Eigen::Vector3d &w_cmd_k,
               double thrust_norm_cmd_k, double thr2acc_k, const Eigen::Vector3d &p_ref_k,
               const Eigen::Vector3d &v_ref_k, const Eigen::Quaterniond &q_ref_k, double thracc_ref_k,
-              const Eigen::Vector3d &w_ref_k, uint8_t fsm_state_k, int32_t osqp_status_k)
+              const Eigen::Vector3d &w_ref_k, uint8_t fsm_state_k, int32_t osqp_status_k, double trim_norm_k,
+              double ecrl_norm_k, bool correction_clipped_k, double trim_time_us_k, double ecrl_time_us_k,
+              double qp_solve_time_us_k, double total_time_us_k)
   {
     if (!csv_file_.is_open())
       return;
@@ -249,7 +275,8 @@ private:
                 << "thracc_cmd_k,wx_cmd_k,wy_cmd_k,wz_cmd_k,thrust_norm_cmd_k,thr2acc_k,"
                 << "p_ref_k_x,p_ref_k_y,p_ref_k_z,v_ref_k_x,v_ref_k_y,v_ref_k_z,"
                 << "q_ref_k_w,q_ref_k_x,q_ref_k_y,q_ref_k_z,thracc_ref_k,wx_ref_k,wy_ref_k,wz_ref_k,"
-                << "fsm_state_k,osqp_status_k\n";
+                << "fsm_state_k,osqp_status_k,trim_norm_k,ecrl_norm_k,correction_clipped_k,"
+                << "trim_time_us_k,ecrl_time_us_k,qp_solve_time_us_k,total_time_us_k\n";
       header_written_ = true;
     }
 
@@ -270,7 +297,9 @@ private:
     writeQuat(csv_file_, q_ref_k);
     csv_file_ << thracc_ref_k << ",";
     writeVec3(csv_file_, w_ref_k);
-    csv_file_ << static_cast<int>(fsm_state_k) << "," << osqp_status_k << "\n";
+    csv_file_ << static_cast<int>(fsm_state_k) << "," << osqp_status_k << "," << trim_norm_k << "," << ecrl_norm_k
+              << "," << (correction_clipped_k ? 1 : 0) << "," << trim_time_us_k << "," << ecrl_time_us_k << ","
+              << qp_solve_time_us_k << "," << total_time_us_k << "\n";
     csv_file_.flush();
   }
 
@@ -278,11 +307,12 @@ public:
   EcrlDataCollectorNode() : Node("ecrl_data_collector_node")
   {
     // ecrl_datasets_v2: schema_version=2 raw logs. Kept in a separate directory
-    // from the old /home/dinesh/ecrl_datasets (schema_version=1, baked-in
+    // from the old ~/ecrl_datasets (schema_version=1, baked-in
     // linearized residuals) so the two formats can never be mixed by accident
     // -- residuals.py::load_raw_csv() would reject the old files anyway, but
     // a distinct directory means you never have to remember that.
-    this->declare_parameter("csv_filepath", "/home/dinesh/ecrl_datasets_v2/figure_8.csv");
+    const char *home = std::getenv("HOME");
+    this->declare_parameter("csv_filepath", std::string(home ? home : ".") + "/ecrl_datasets_v2/figure_8.csv");
     csv_filepath_ = this->get_parameter("csv_filepath").as_string();
 
     size_t last_slash = csv_filepath_.find_last_of('/');

@@ -61,6 +61,67 @@ inline Eigen::Matrix<double, 9, 1> boxminus(const NominalState &a, const Nominal
   return out;
 }
 
+// The controller's own (asymmetric) error state, docs/residual_conventions.md
+// §1: delta_p = p_ref-p_actual, delta_v = v_ref-v_actual, delta_theta =
+// Log(R_actual^T R_ref). NOT the same argument-order convention as
+// boxminus() above (§4) -- see the comment there. Matches
+// scripts/residuals.py::controller_error_state and the delta_x_init
+// computation in MpcController::execMPC.
+inline Eigen::Matrix<double, 9, 1> controllerErrorState(const NominalState &x_ref, const NominalState &x_actual)
+{
+  Eigen::Matrix<double, 9, 1> delta;
+  delta.segment<3>(0) = x_ref.p - x_actual.p;
+  delta.segment<3>(3) = x_ref.v - x_actual.v;
+  delta.segment<3>(6) = SO3::log(x_actual.q.toRotationMatrix().transpose() * x_ref.q.toRotationMatrix());
+  return delta;
+}
+
+// Exact inverse of boxminus(): given a nominal-model prediction and a §4
+// residual d = boxminus(x_true, nominal_pred), reconstructs x_true. Used to
+// fold a predicted residual back into a concrete corrected state so its
+// effect on the QP's §1 error-state constraint can be computed exactly
+// (docs/residual_conventions.md "Relationship to Task 4's affine QP term")
+// rather than via a hand-derived linearized Jacobian -- this composition is
+// exact (no small-angle approximation) for any d within Log()'s valid domain:
+//   d.p = x_true.p - nominal_pred.p           => x_true.p = nominal_pred.p + d.p
+//   d.v = x_true.v - nominal_pred.v           => x_true.v = nominal_pred.v + d.v
+//   d.theta = Log(R_true^T R_nominal_pred)    => R_true = R_nominal_pred * Exp(-d.theta)
+inline NominalState composeFromResidual(const NominalState &nominal_pred, const Eigen::Matrix<double, 9, 1> &d)
+{
+  NominalState x_true;
+  x_true.p = nominal_pred.p + d.segment<3>(0);
+  x_true.v = nominal_pred.v + d.segment<3>(3);
+  const Eigen::Matrix3d R_true = nominal_pred.q.toRotationMatrix() * SO3::exp(-d.segment<3>(6));
+  x_true.q = Eigen::Quaterniond(R_true);
+  x_true.q.normalize();
+  return x_true;
+}
+
+// The QP-injection correction (docs/residual_conventions.md "Relationship to
+// Task 4's affine QP term"): given the nominal one-step prediction from the
+// current MEASURED state (nominal_pred -- computed with the reference
+// control u_ref as a zeroth-order stand-in for the QP's not-yet-solved
+// stage-0 decision variable, since that's what's actually available at
+// constraint-build time) and a predicted §4 residual d, returns the exact
+// additive constant c such that controllerErrorState(x_ref_next,
+// nominal_pred) + c exactly equals controllerErrorState(x_ref_next,
+// composeFromResidual(nominal_pred, d)) -- i.e. the exact effect of folding
+// d into the predicted next state, via composeFromResidual's exact SO3
+// composition rather than a hand-derived linearized Jacobian (an earlier
+// version used a linearized closed form for the rotation block and was
+// caught wrong by test/test_nominal_dynamics.cpp's
+// MatchesSecondOrderTruncationWithExactControl case -- see git history).
+// The u_ref-for-u_0 substitution is a separate, deliberately-accepted
+// approximation, bounded (not asymptotically eliminated) by that same test
+// file's ImprovesOnUncorrectedBaselineAtRealisticScale case.
+inline Eigen::Matrix<double, 9, 1> residualToQpCorrection(const NominalState &nominal_pred,
+                                                           const NominalState &x_ref_next,
+                                                           const Eigen::Matrix<double, 9, 1> &d)
+{
+  const NominalState x_true_pred = composeFromResidual(nominal_pred, d);
+  return controllerErrorState(x_ref_next, x_true_pred) - controllerErrorState(x_ref_next, nominal_pred);
+}
+
 } // namespace ommpc
 
 #endif // OMMPC_NOMINAL_DYNAMICS_H

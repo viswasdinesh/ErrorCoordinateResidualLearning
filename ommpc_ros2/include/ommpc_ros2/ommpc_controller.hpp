@@ -11,6 +11,7 @@
 #include <cmath>
 #include <iostream>
 #include <algorithm>
+#include <chrono>
 
 #include <sensor_msgs/msg/imu.hpp>
 #include <nav_msgs/msg/odometry.hpp>
@@ -19,6 +20,9 @@
 #include "ommpc_ros2/polynomial_trajectory.h"
 #include "ommpc_ros2/so3_math.h"
 #include "ommpc_ros2/msg/poly_traj.hpp"
+#include "ommpc_ros2/nominal_dynamics.h"
+#include "ommpc_ros2/residual_model_ecrl.h"
+#include "ommpc_ros2/residual_model_ambient.h"
 
 static constexpr int nstep = 20;  // N steps
 static constexpr int nx = 9;      // dimension of error state (δp, δv, δR)
@@ -681,6 +685,28 @@ public:
     }
   }
 
+  // Overwrites the dynamics-equality-constraint RHS (rows [nx, nx+nstep*nx),
+  // currently pinned to zero by buildConstraintVectors()) with a per-cycle
+  // residual-correction bias c, applied identically to every stage --
+  // offset-free-MPC-style: the disturbance is assumed roughly constant over
+  // the horizon, re-estimated fresh every control cycle. Must be called
+  // AFTER buildConstraintVectors() (which resets these rows to zero) and
+  // BEFORE solve(). See MpcController::execMPC and
+  // docs/residual_conventions.md "Relationship to Task 4's affine QP term".
+  void applyResidualCorrection(const Eigen::Matrix<double, nx, 1> &c)
+  {
+    int offset = nx;
+    for (int k = 0; k < nstep; ++k)
+    {
+      for (int i = 0; i < nx; ++i)
+      {
+        l_[offset + i] = c(i);
+        u_[offset + i] = c(i);
+      }
+      offset += nx;
+    }
+  }
+
 private:
   // dimension of the problem
   int total_vars_;
@@ -752,11 +778,44 @@ struct Parameter_t
 
   bool use_fix_yaw, use_trajectory_ending_pos;
 
-  bool use_ref_txt; 
+  bool use_ref_txt;
   std::string ref_filename;
   double ref_time_step;
 
   double takeoff_land_speed, takeoff_height;
+
+  // Off by default: applies the trained `ecrl` residual model's prediction
+  // as a per-cycle affine bias on the QP's dynamics-equality constraint
+  // (docs/residual_conventions.md "Relationship to Task 4's affine QP
+  // term"). See MpcController::execMPC. residual_clip_norm hard-caps the
+  // 9-D correction's world-frame norm before it reaches the QP, as a safety
+  // net against an out-of-distribution model output injecting a large
+  // disturbance into a real-time control loop.
+  bool enable_residual_correction = false;
+  double residual_clip_norm = 0.08;
+
+  // Off by default: the `ambient` adapter's alternative to
+  // enable_residual_correction -- 8-D body-frame velocity/rate/thrust
+  // features (residuals.py::ambient_features), no reference trajectory
+  // involved, vs. ecrl's 16-D error-coordinate features. Mutually exclusive
+  // with enable_residual_correction in practice (execMPC checks
+  // enable_residual_correction first, so if both are set ecrl wins) --
+  // the two are alternative feature adapters for the same correction slot,
+  // not meant to be combined. Shares residual_clip_norm as its safety cap.
+  bool enable_ambient_correction = false;
+
+  // Off by default: a persistent, online-updated estimate of a roughly-
+  // constant unmodeled disturbance (e.g. steady wind), summed with the
+  // ecrl correction (if also enabled) before injection into the QP.
+  // Targets the steady-state tracking offset a stateless per-cycle
+  // correction cannot close -- see MpcController::execMPC's disturbance-
+  // observer bookkeeping. integral_trim_tau is the leaky-integrator's
+  // time constant in seconds: shorter tracks changing disturbances faster
+  // but is noisier; longer is smoother but slower to adapt. Shares
+  // residual_clip_norm as its safety cap (applied to the combined
+  // ecrl + trim correction, and to the trim's own internal state).
+  bool enable_integral_trim = false;
+  double integral_trim_tau = 5.0;
 };
 
 class MpcController
@@ -769,7 +828,24 @@ private:
 
   // params
   Parameter_t param_;
-	
+
+  // Last cycle's actually-applied control (thracc, body rates) -- matches
+  // schema_version=2 logging's "u_k^applied" semantics (docs/
+  // residual_conventions.md §4), used as the ecrl adapter's `du` feature.
+  // Not the current cycle's about-to-be-solved control: that's the QP's own
+  // decision variable and unknown until after solve().
+  ommpc::NominalInput last_applied_u_;
+
+  // Online constant-disturbance observer state (Parameter_t::
+  // enable_integral_trim). Runs unconditionally every execMPC cycle (cheap:
+  // one nominalStep + boxminus) so toggling the flag mid-flight never
+  // starts from a cold estimate -- only its *use* is gated. See execMPC's
+  // step-1.5 comment.
+  Eigen::Matrix<double, 9, 1> d_hat_ = Eigen::Matrix<double, 9, 1>::Zero();
+  ommpc::NominalState last_meas_state_;
+  rclcpp::Time last_meas_time_{ 0, 0, RCL_ROS_TIME };
+  bool have_last_meas_ = false;
+
   // for MPC timing
   double timing_feedback_;
 	
@@ -852,6 +928,39 @@ public:
   double thr2acc;
   double P;
 
+  // Live diagnostics for the disturbance-observer trim / NN correction,
+  // updated every execMPC cycle (read by OmmpcNode::publishReferenceState,
+  // logged by ecrl_data_collector_node.cpp) so the terms' relative
+  // contribution and clipping behavior can be inspected post-flight instead
+  // of only inferred. trim_norm is d_hat_'s norm (post its own internal
+  // clip, tracked unconditionally regardless of enable_integral_trim);
+  // ecrl_norm/ecrl_time_us are named for the ecrl path but cover whichever
+  // NN adapter is actually active this cycle (ecrlForward() if
+  // enable_residual_correction, ambientForward() if
+  // enable_ambient_correction -- the two are mutually exclusive in
+  // practice, see enable_ambient_correction's doc comment), 0 when neither
+  // is set; correction_clipped is whether the combined NN+trim correction
+  // hit residual_clip_norm this cycle (only meaningful when at least one
+  // correction path is enabled).
+  double last_trim_norm = 0.0;
+  double last_ecrl_norm = 0.0;
+  bool last_correction_clipped = false;
+
+  // Live per-cycle compute-time diagnostics (microseconds, std::chrono::
+  // steady_clock wall time), for compute-cost benchmarking against the
+  // 100Hz/10ms control-loop budget (ommpc_node.cpp's controlLoop timer).
+  // last_total_time_us covers everything from the top of execMPC through
+  // the OSQP solve (excludes the cheap post-solve result extraction);
+  // trim/ecrl/qp are disjoint sub-slices of it, each 0 when that cycle's
+  // path wasn't exercised (trim bookkeeping itself still runs whenever
+  // have_last_meas_ is true, regardless of enable_integral_trim -- see
+  // that member's doc comment -- so last_trim_time_us reflects that, not
+  // the enable flag).
+  double last_trim_time_us = 0.0;
+  double last_ecrl_time_us = 0.0;
+  double last_qp_solve_time_us = 0.0;
+  double last_total_time_us = 0.0;
+
   // MPC reference state/input matrices
   std::vector<Eigen::SparseMatrix<double>> Fx;  // nstep，nx×nx
   std::vector<Eigen::SparseMatrix<double>> Fu;  // nstep，nx×nu
@@ -870,6 +979,13 @@ public:
     param_ = param;
     thr2acc = gravity_ / param_.hover_percent;
     P = 1e6;
+
+    // Sane hover-ish default until the first real cycle updates it.
+    last_applied_u_.thracc = gravity_;
+    last_applied_u_.omega = Eigen::Vector3d::Zero();
+
+    d_hat_.setZero();
+    have_last_meas_ = false;
 
     // MPC Controller
     std::cout << "[MPCCtrl] mpc time_step: " << param_.step_T << std::endl;
@@ -934,6 +1050,7 @@ public:
               Controller_Output_t &u, rclcpp::Time now_time, c_int &osqp_status_out)
   {
     const clock_t start = clock();
+    const auto t_total_start = std::chrono::steady_clock::now();
 
     // 1. set init error state of OMMPC
     auto rot_q = odom.q;
@@ -949,9 +1066,147 @@ public:
     delta_x_init << err_p(0), err_p(1), err_p(2), err_v(0), err_v(1), err_v(2), err_q(0), err_q(1), err_q(2);
     mpc_wrapper_.setInitValue(delta_x_init);
 
+    // 1.5. Disturbance handling: an optional per-cycle NN correction
+    // (enable_residual_correction) and/or a persistent online disturbance-
+    // observer trim (enable_integral_trim) are combined into one §4-
+    // convention residual d_total, converted once via
+    // residualToQpCorrection(), and injected into the QP's dynamics-
+    // equality constraint (docs/residual_conventions.md "Relationship to
+    // Task 4's affine QP term"). Both off by default.
+    const ommpc::NominalState x_k_meas{odom.p, odom.v, rot_q};
+    const ommpc::NominalState x_ref_k{x_des_start.head(3), x_des_start.tail(3), des_q};
+    ommpc::NominalInput u_ref_k;
+    u_ref_k.thracc = u_des_start(0);
+    u_ref_k.omega = u_des_start.segment<3>(1);
+
+    // --- online constant-disturbance observer bookkeeping -- runs
+    // unconditionally (see d_hat_'s doc comment). Compares this cycle's
+    // measured state against a one-step nominalStep() prediction seeded by
+    // LAST cycle's measured state + control it actually applied, i.e. the
+    // same causally-computable §4 "d_k" quantity
+    // residuals.py::compute_targets() computes offline from logged flights.
+    // Leaky-integrated (time constant integral_trim_tau) into a persistent
+    // world-frame bias estimate d_hat_.
+    const auto t_trim_start = std::chrono::steady_clock::now();
+    if (have_last_meas_)
+    {
+      const double dt_obs = (now_time - last_meas_time_).seconds();
+      if (dt_obs > 0.0 && dt_obs < 0.2)
+      {
+        const ommpc::NominalState nominal_pred_prev =
+            ommpc::nominalStep(last_meas_state_, last_applied_u_, dt_obs);
+        const Eigen::Matrix<double, 9, 1> d_raw = ommpc::boxminus(x_k_meas, nominal_pred_prev);
+        // d_raw is defined relative to dt_obs (this cycle's actual
+        // measurement interval, ~0.01s @ 100Hz -- same convention
+        // scripts/residuals.py::compute_targets() uses, dt = row.dt_s).
+        // residualToQpCorrection() below instead composes d onto a
+        // nominal_pred built with param_.step_T (0.05s, the MPC's internal
+        // horizon discretization) -- rescale linearly (a roughly-constant-
+        // rate disturbance's effect over step_T is step_T/dt_obs times its
+        // effect over dt_obs) so d_hat_ stays in the "per-step_T" units the
+        // injection point expects, not 5x too small.
+        const Eigen::Matrix<double, 9, 1> d_scaled = d_raw * (param_.step_T / dt_obs);
+        const double alpha = std::clamp(dt_obs / param_.integral_trim_tau, 0.0, 1.0);
+        d_hat_ = (1.0 - alpha) * d_hat_ + alpha * d_scaled;
+        const double d_hat_norm = d_hat_.norm();
+        if (d_hat_norm > param_.residual_clip_norm)
+        {
+          d_hat_ *= (param_.residual_clip_norm / d_hat_norm);
+        }
+        last_trim_norm = d_hat_.norm();
+      }
+    }
+    last_trim_time_us = std::chrono::duration<double, std::micro>(
+                             std::chrono::steady_clock::now() - t_trim_start)
+                             .count();
+    last_meas_state_ = x_k_meas;
+    last_meas_time_ = now_time;
+    have_last_meas_ = true;
+
+    if (param_.enable_residual_correction || param_.enable_ambient_correction || param_.enable_integral_trim)
+    {
+      Eigen::VectorXd d_total = Eigen::VectorXd::Zero(9);
+
+      if (param_.enable_residual_correction)
+      {
+        // ecrl adapter's 16-D input (residuals.py::ECRL_FEATURE_NAMES
+        // order): dx (== delta_x_init, already computed above -- same
+        // controller_error_state(x_ref_k, x_k) quantity, no need to
+        // recompute), du (reference minus LAST cycle's actually-applied
+        // control -- see last_applied_u_'s doc comment), r_ref.
+        Eigen::VectorXd ecrl_x(16);
+        ecrl_x.segment<9>(0) = delta_x_init;
+        ecrl_x(9) = u_ref_k.thracc - last_applied_u_.thracc;
+        ecrl_x.segment<3>(10) = u_ref_k.omega - last_applied_u_.omega;
+        ecrl_x.segment<3>(13) = SO3::log(des_q.toRotationMatrix());
+        const auto t_ecrl_start = std::chrono::steady_clock::now();
+        const Eigen::VectorXd ecrl_pred = ommpc::residual::ecrlForward(ecrl_x);
+        last_ecrl_time_us = std::chrono::duration<double, std::micro>(
+                                 std::chrono::steady_clock::now() - t_ecrl_start)
+                                 .count();
+        last_ecrl_norm = ecrl_pred.norm();
+        d_total += ecrl_pred;
+      }
+      else if (param_.enable_ambient_correction)
+      {
+        // ambient adapter's 8-D input (residuals.py::ambient_features
+        // order): body-frame velocity (R_k^T v_k), body-frame MEASURED
+        // angular rate (odom.w -- Odom_Data_t::feed() already applies the
+        // same FRD->FLU sign flip as ecrl_data_collector_node.cpp's
+        // wm_k_x/y/z, so this matches the training data's convention
+        // exactly), last cycle's applied normalized thrust, and the live
+        // thr2acc estimate. last_applied_u_.thracc / thr2acc is used in
+        // place of the logged (post-clamp) thrust_norm_cmd_k -- the QP's
+        // own u_lb/u_ub already bound thracc to
+        // [min_thrust,max_thrust]*thr2acc (see setStateMatricesandBounds),
+        // the same range ommpc_node.cpp's publishRatesSetpoint clamps to,
+        // so this is effectively exact except in the rare cycle where the
+        // clamp and the QP bound would have disagreed.
+        Eigen::VectorXd ambient_x(8);
+        ambient_x.segment<3>(0) = est_q.toRotationMatrix().transpose() * odom.v;
+        ambient_x.segment<3>(3) = odom.w;
+        ambient_x(6) = last_applied_u_.thracc / thr2acc;
+        ambient_x(7) = thr2acc;
+        const auto t_ecrl_start = std::chrono::steady_clock::now();
+        const Eigen::VectorXd ambient_pred = ommpc::residual::ambientForward(ambient_x);
+        last_ecrl_time_us = std::chrono::duration<double, std::micro>(
+                                 std::chrono::steady_clock::now() - t_ecrl_start)
+                                 .count();
+        last_ecrl_norm = ambient_pred.norm();
+        d_total += ambient_pred;
+      }
+      else
+      {
+        last_ecrl_norm = 0.0;
+        last_ecrl_time_us = 0.0;
+      }
+
+      if (param_.enable_integral_trim)
+      {
+        d_total += d_hat_;
+      }
+
+      const double d_norm = d_total.norm();
+      last_correction_clipped = d_norm > param_.residual_clip_norm;
+      if (last_correction_clipped)
+      {
+        d_total *= (param_.residual_clip_norm / d_norm);
+      }
+
+      const ommpc::NominalState nominal_pred = ommpc::nominalStep(x_k_meas, u_ref_k, param_.step_T);
+      const ommpc::NominalState x_ref_next = ommpc::nominalStep(x_ref_k, u_ref_k, param_.step_T);
+      const Eigen::Matrix<double, nx, 1> c =
+          ommpc::residualToQpCorrection(nominal_pred, x_ref_next, d_total);
+      mpc_wrapper_.applyResidualCorrection(c);
+    }
+
     // 2. solve MPC optimization problem
     Solution solution;
+    const auto t_qp_start = std::chrono::steady_clock::now();
     bool mpc_solved = mpc_wrapper_.solve(solution, osqp_status_out);
+    const auto t_qp_end = std::chrono::steady_clock::now();
+    last_qp_solve_time_us = std::chrono::duration<double, std::micro>(t_qp_end - t_qp_start).count();
+    last_total_time_us = std::chrono::duration<double, std::micro>(t_qp_end - t_total_start).count();
 
     if (!mpc_solved)
       return false;
@@ -966,6 +1221,11 @@ public:
     double normalized_thrust;
     normalized_thrust = thrustacc / thr2acc;
     u.thrust = normalized_thrust;
+
+    // Cache what was actually applied this cycle for next cycle's `du`
+    // feature (see last_applied_u_'s doc comment).
+    last_applied_u_.thracc = thrustacc;
+    last_applied_u_.omega = u.bodyrates;
 
     // Used for thrust-accel mapping estimation
     timed_thrust.push(std::pair<rclcpp::Time, double>(now_time, u.thrust));

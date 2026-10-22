@@ -7,11 +7,8 @@ def generate_launch_description():
     # Retrieve the package path
     pkg_share = get_package_share_directory('ommpc_ros2')
     
-    # Path to parameter YAML
-    # First check if package share contains it, otherwise point to source
+    # Path to parameter YAML (installed by CMakeLists.txt's install(DIRECTORY config ...))
     params_yaml = os.path.join(pkg_share, 'config', 'params.yaml')
-    if not os.path.exists(params_yaml):
-        params_yaml = '/home/dinesh/ecrl_ws/src/ommpc_ros2/config/params.yaml'
 
     # OMMPC controller node
     ommpc_node = Node(
@@ -29,7 +26,7 @@ def generate_launch_description():
         name='ecrl_data_collector_node',
         output='screen',
         parameters=[
-            {'csv_filepath': '/home/dinesh/ecrl_datasets_v2/polynomial1.csv'},
+            {'csv_filepath': os.path.expanduser('~/ecrl_datasets_v2/polynomial1.csv')},
         ]
     )
 
